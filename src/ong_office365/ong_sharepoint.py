@@ -10,23 +10,32 @@ from typing import Optional
 
 from office365.runtime.client_request_exception import ClientRequestException
 from office365.sharepoint.client_context import ClientContext
+from office365.sharepoint.files.file import File
 from office365.sharepoint.files.system_object_type import FileSystemObjectType
 from office365.sharepoint.listitems.listitem import ListItem
 from office365.sharepoint.webs.web import Web
-from office365.sharepoint.files.file import File
+
 from ong_office365.ong_office365_base import Office365Base
 
 
 class Sharepoint(Office365Base):
 
-    def __init__(self, client_id: str, email: str, server: str):
+    @staticmethod
+    def config_section() -> str:
+        return "sharepoint"
+
+    def __init__(self, client_id: str = None, email: str = None, server: str = None, tenant: str = None,
+                 timeout=None):
         """
         Initializes sharepoint instance
         :param client_id: List of client ids could be found in https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade
         :param email: your CORPORATE email, line name@tenant
         :param server: the server (e.g. for a specific teams), typically is https://{tenant}.sharepoint.com/site/{site}
+        :param tenant: tenant name (find it in Ms Entra ID configuration)
+        :param timeout: time to wait for user login
         """
-        super().__init__(client_id, email, server, ClientContext(server).with_access_token)
+        super().__init__(client_id, email, server, tenant, ClientContext(server or self.server).with_access_token,
+                         timeout=timeout)
 
     def list_files(self):
         doc_lib = self.ctx.web.default_document_library()
@@ -83,7 +92,6 @@ class Sharepoint(Office365Base):
             source_file.download_session(local_file, print_download_progress).execute_query()
         print("[Ok] file has been downloaded: {0}".format(destination))
 
-
     def get_personal_site(self):
         my_site = self.ctx.web.current_user.get_personal_site().execute_query()
         # print(my_site.url)
@@ -120,7 +128,7 @@ class Sharepoint(Office365Base):
             )
 
         target_folder = self.get_folder(target_folder)
-        size_chunk = 1000000        # 1Mb
+        size_chunk = 1000000  # 1Mb
         with open(local_path, "rb") as f:
             uploaded_file = target_folder.files.create_upload_session(
                 f, size_chunk, print_upload_progress
@@ -172,4 +180,3 @@ class Sharepoint(Office365Base):
 
         file = try_get_file(self.ctx.web, file_url)
         return file is not None
-

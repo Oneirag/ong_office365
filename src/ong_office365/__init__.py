@@ -1,6 +1,9 @@
 import sys
 import os
 import configparser
+import loguru
+
+logger = loguru.logger
 
 name = "ong_office365"
 
@@ -30,7 +33,6 @@ def init_config() -> configparser.ConfigParser:
     }
 
 
-
     config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation(),
                                        )
     config['DEFAULT'] = default
@@ -46,5 +48,3 @@ def init_config() -> configparser.ConfigParser:
 
 
 config = init_config()
-site = config.get("DEFAULT", "sharepoint")
-email = get_email(config.get("DEFAULT", "email"))

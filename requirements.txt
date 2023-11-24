@@ -4,3 +4,4 @@ msal
 pandas          # For reading CSV to test a proper client ID
 # jwt           # Not needed
 pywin32; sys_platform == 'win32'
+loguru
