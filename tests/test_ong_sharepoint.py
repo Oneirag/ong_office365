@@ -10,6 +10,8 @@ from tests.test_ong_office365_base import TestOngOffice365Base, iterate_client_i
 
 class TestSharepoint(TestOngOffice365Base):
 
+    single = True
+
     @staticmethod
     def client_class() -> Type[Office365Base]:
         return Sharepoint
@@ -63,6 +65,28 @@ class TestSharepoint(TestOngOffice365Base):
         self.assertTrue(sharepoint.exits(file_url),
                         f"File {temp_file} was not uploaded")
         sharepoint.delete(file_url)
+
+    @iterate_client_ids
+    def test_400_list_lists(self, client_id: str, sharepoint: Sharepoint):
+        """List the available sharepoint lists of current site"""
+        self.test_scopes(client_id, sharepoint, ['Sites.ReadWrite.All'])
+        res = sharepoint.get_lists()
+        print(res)
+        self.assertTrue(len(res) > 2, f"Too few lists: {res}")
+        pass
+
+    @iterate_client_ids
+    def test_410_read_list(self, client_id: str, sharepoint: Sharepoint):
+        """List the available sharepoint lists of current site. Reads them by title, guid and object
+        and checks that all return same values"""
+        lists = sharepoint.get_lists()
+        last_list = list(lists.values())[-1]
+        data1 = sharepoint.read_list(list_obj=last_list)
+        data2 = sharepoint.read_list(list_id=last_list.id)
+        data3 = sharepoint.read_list(list_title=last_list.title)
+        self.assertTrue(data1.equals(data2))
+        self.assertTrue(data1.equals(data3))
+        pass
 
 
 if __name__ == '__main__':

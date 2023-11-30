@@ -45,6 +45,12 @@ class Office365Base:
         scopes = ['.default']
         return scopes
 
+    def token_scopes(self) -> list:
+        """List of tokens included in the token. If asking for [.default] scope provides
+        the actual tokens"""
+        decoded_token = self.token_manager.last_decoded_token
+        return decoded_token['scp'].split(" ")
+
     @property
     def email(self):
         return self.__get_config("email")

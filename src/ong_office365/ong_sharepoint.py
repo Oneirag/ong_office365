@@ -8,17 +8,32 @@ Needs pip install msal msal_extensions pyjwt requests datetime
 import os.path
 from typing import Optional
 
+import pandas as pd
 from office365.runtime.client_request_exception import ClientRequestException
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.files.file import File
 from office365.sharepoint.files.system_object_type import FileSystemObjectType
+from office365.sharepoint.listitems.collection import ListItemCollection
 from office365.sharepoint.listitems.listitem import ListItem
+from office365.sharepoint.lists.list import List
 from office365.sharepoint.webs.web import Web
 
 from ong_office365.ong_office365_base import Office365Base
 
 
+# import urllib.parse
+
+
 class Sharepoint(Office365Base):
+
+    # Make sure I can read all lists
+    # @property
+    # def scopes(self) -> list:
+    # Mail.Read Sites.ReadWrite.All User.Read       <- those are the right scopes for sharepoint
+    #     return ['User.Read', 'User.ReadBasic.All'] #, 'Files.ReadWrite.All']
+    #     return ['Sites.Read.All'] #, 'Files.ReadWrite.All']
+    #     return ["Sites.FullControl.All"]
+    #     return ["AllSites.FullControl"]
 
     @staticmethod
     def config_section() -> str:
@@ -180,3 +195,58 @@ class Sharepoint(Office365Base):
 
         file = try_get_file(self.ctx.web, file_url)
         return file is not None
+
+    def get_lists(self) -> dict:
+        """Returns a dict, indexed by title, of objects representing lists of site"""
+        result = (
+            self.ctx.web.lists.get()
+            # .select(["IsSystemList", "Title"])
+            .filter("IsSystemList eq false")
+            .execute_query()
+        )
+        return {r.title: r for r in result}
+
+    def read_list(self, list_title: str = None, list_id: str = None, list_obj: List = None):
+
+        if sum(i is not None for i in [list_title, list_id, list_obj]) != 1:
+            raise ValueError("Only one parameter must be informed")
+
+        def print_progress(items):
+            # type: (ListItemCollection) -> None
+            print("Items read: {0}".format(len(items)))
+
+        def query_large_list(target_list):
+            data = []
+            # type: (List) -> None
+            paged_items = (
+                target_list.items.paged(500, page_loaded=print_progress).get().execute_query()
+            )
+            for index, item in enumerate(paged_items):  # type: int, ListItem
+                data.append(item.properties)
+                # print("{0}: {1}".format(index, item.id))
+            # all_items = [item for item in paged_items]
+            # print("Total items count: {0}".format(len(all_items)))
+            return data
+
+        def get_total_count(target_list):
+            # type: (List) -> None
+            all_items = target_list.items.get_all(5000, print_progress).execute_query()
+            print("Total items count: {0}".format(len(all_items)))
+
+        if list_obj is not None:
+            large_list = list_obj
+        elif list_id is not None:
+            large_list = self.ctx.web.lists.get_by_id(list_id)
+        elif " " not in list_title:
+            large_list = self.ctx.web.lists.get_by_title(list_title)
+        else:
+            # list title with spaces. Must be manually read from the list of all tables
+            lists = self.get_lists()
+            for name, list_obj in lists.items():
+                if name == list_title:
+                    return self.read_list(list_obj=list_obj)
+            raise ValueError(f"List {list_title} not found")
+        retval = query_large_list(large_list)
+        df = pd.DataFrame(retval)
+        df = df.set_index("ID")
+        return df

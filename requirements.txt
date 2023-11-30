@@ -2,6 +2,7 @@ Office365-REST-Python-Client
 msal_extensions
 msal
 pandas          # For reading CSV to test a proper client ID
-# jwt           # Not needed
+pyjwt           # Used for decoding token and read received scopes. pyjwt==1.7.1 can also work
 pywin32; sys_platform == 'win32'
 loguru
+tqdm            # Nice progress bar
