@@ -6,3 +6,7 @@ pyjwt           # Used for decoding token and read received scopes. pyjwt==1.7.1
 pywin32; sys_platform == 'win32'
 loguru
 tqdm            # Nice progress bar
+# sqlalchemy      # Test if it can be directly connected to a sharepoint list
+# sqlalchemy.orm  # Test if it can be directly connected to a sharepoint list
+selenium
+selenium-wire

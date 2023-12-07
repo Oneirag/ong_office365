@@ -12,16 +12,13 @@ import pandas as pd
 from office365.runtime.client_request_exception import ClientRequestException
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.files.file import File
+from office365.sharepoint.folders.folder import Folder
 from office365.sharepoint.files.system_object_type import FileSystemObjectType
-from office365.sharepoint.listitems.collection import ListItemCollection
 from office365.sharepoint.listitems.listitem import ListItem
 from office365.sharepoint.lists.list import List
 from office365.sharepoint.webs.web import Web
 
-from ong_office365.ong_office365_base import Office365Base
-
-
-# import urllib.parse
+from ong_office365.ong_office365_base import Office365Base, DownloadProgressBar
 
 
 class Sharepoint(Office365Base):
@@ -52,28 +49,64 @@ class Sharepoint(Office365Base):
         super().__init__(client_id, email, server, tenant, ClientContext(server or self.server).with_access_token,
                          timeout=timeout)
 
-    def list_files(self):
+    def __get_folder_obj(self, folder_relative_url=None) -> Folder:
+        """Gets a folder object according to given relative url. Returns root folder if no url is given"""
+        if folder_relative_url is None:
+            folder_obj = self.ctx.web.default_document_library().root_folder
+        else:
+            folder_obj = self.ctx.web.get_folder_by_server_relative_url(folder_relative_url)
+        return folder_obj
+
+    def list_folders(self, folder_relative_url=None) -> dict:
+        """
+        Gets list of folders of a certain resource as a dict indexed by folder relative url
+        :param folder_relative_url: optional parameter with the server relative URL. If None, list root folder
+        :return: dict of folder objects indexed by folder server relative url
+        """
+        folders = self.__get_folder_obj(folder_relative_url).folders.get().execute_query()
+        retval = {f.serverRelativeUrl: f for f in folders}
+        return retval
+
+    def list_files_folder(self, folder_relative_url=None):
+        """
+        Gets list of files of a certain folder_relative_url as a dict indexed by file relative url
+        :param folder_relative_url: optional parameter with the server relative URL. If None, list root folder
+        :return: dict of folder objects indexed by folder server relative url
+        """
+        files = self.__get_folder_obj(folder_relative_url).files.get().execute_query()
+        retval = {f.serverRelativeUrl: f for f in files}
+        return retval
+
+    def get_all_folders_files(self, limit: int = None):
+        """Returns a tuple of dicts of ALL folders and files of the site, indexed by relative url"""
+        folders = dict()
+        files = dict()
         doc_lib = self.ctx.web.default_document_library()
         items = (
             doc_lib.items.select(["FileSystemObjectType"])
             .expand(["File", "Folder"])
-            # .get_all()
-            .get().top(10)
-            .execute_query()
         )
+        if limit is None:
+            items = items.get_all()
+        else:
+            items = items.get().top(limit)
+        items = items.execute_query()
         for idx, item in enumerate(items):  # type: int, ListItem
             if item.file_system_object_type == FileSystemObjectType.Folder:
-                print(
+                folders[item.folder.serverRelativeUrl] = item.folder
+                self.logger.trace(
                     "({0} of {1})  Folder: {2}".format(
                         idx, len(items), item.folder.serverRelativeUrl
                     )
                 )
             else:
-                print(
+                files[item.file.serverRelativeUrl] = item.file
+                self.logger.trace(
                     "({0} of {1}) File: {2}".format(
                         idx, len(items), item.file.serverRelativeUrl
                     )
                 )
+        return folders, files
 
     def download_file(self, server_relative_url: str, path: str = None):
         """In theory...for files up to 4Mb, but 20Mb could be downloaded..."""
@@ -90,22 +123,21 @@ class Sharepoint(Office365Base):
                 .execute_query()
             )
 
-    def download_file_large(self, server_relative_url: str, path: str = None):
-
-        def print_download_progress(offset):
-            # type: (int) -> None
-            print("Downloaded '{0}' bytes...".format(offset))
-
+    def download_file_large(self, server_relative_url: str, dest_folder: str = None):
+        """Downloads a file with a progress bar in the given folder (or current if None)"""
         filename = os.path.basename(server_relative_url)
-        if path:
-            destination = os.path.join(path, filename)
+        if dest_folder:
+            destination = os.path.join(dest_folder, filename)
         else:
             destination = filename
 
         source_file = self.ctx.web.get_file_by_server_relative_path(server_relative_url)
+        source_file.get().execute_query()
         with open(destination, "wb") as local_file:
-            source_file.download_session(local_file, print_download_progress).execute_query()
-        print("[Ok] file has been downloaded: {0}".format(destination))
+            file_size = source_file.length
+            with DownloadProgressBar(total=file_size, incremental=False) as t:
+                source_file.download_session(local_file, t.update_to).execute_query()
+        self.logger.debug("[Ok] file has been downloaded: {0}".format(destination))
 
     def get_personal_site(self):
         my_site = self.ctx.web.current_user.get_personal_site().execute_query()
@@ -145,11 +177,12 @@ class Sharepoint(Office365Base):
         target_folder = self.get_folder(target_folder)
         size_chunk = 1000000  # 1Mb
         with open(local_path, "rb") as f:
-            uploaded_file = target_folder.files.create_upload_session(
-                f, size_chunk, print_upload_progress
-            ).execute_query()
+            with DownloadProgressBar(total=os.path.getsize(local_path)) as t:
+                uploaded_file = target_folder.files.create_upload_session(
+                    f, size_chunk, t.update_to
+                ).execute_query()
 
-        print("File {0} has been uploaded successfully".format(uploaded_file.serverRelativeUrl))
+        self.logger.debug("File {0} has been uploaded successfully".format(uploaded_file.serverRelativeUrl))
 
     def upload_file(self, local_path: str, target_folder=None):
         """
@@ -165,7 +198,7 @@ class Sharepoint(Office365Base):
         folder = self.get_folder(target_folder)
         with open(local_path, "rb") as f:
             file = folder.files.upload(f).execute_query()
-        print("File has been uploaded into: {0}".format(file.serverRelativeUrl))
+        self.logger.debug("File has been uploaded into: {0}".format(file.serverRelativeUrl))
 
     def delete(self, file_url):
         """
@@ -206,32 +239,29 @@ class Sharepoint(Office365Base):
         )
         return {r.title: r for r in result}
 
-    def read_list(self, list_title: str = None, list_id: str = None, list_obj: List = None):
+    def read_list(self, list_title: str = None, list_id: str = None, list_obj: List = None) -> pd.DataFrame:
+        """
+        Reads a list either with list title (it might not work if name has spaces), list id
+        or the list object. Only one of the three must be informed. Returns list as a pandas DataFrame
+        :param list_title: name of the list
+        :param list_id: guid of the list
+        :param list_obj: a list object (such one returned by get_list)
+        :return:
+        """
 
         if sum(i is not None for i in [list_title, list_id, list_obj]) != 1:
             raise ValueError("Only one parameter must be informed")
 
-        def print_progress(items):
-            # type: (ListItemCollection) -> None
-            print("Items read: {0}".format(len(items)))
-
         def query_large_list(target_list):
             data = []
             # type: (List) -> None
-            paged_items = (
-                target_list.items.paged(500, page_loaded=print_progress).get().execute_query()
-            )
+            with DownloadProgressBar(total=target_list.item_count) as t:
+                paged_items = (
+                    target_list.items.paged(500, page_loaded=t.update_to).get().execute_query()
+                )
             for index, item in enumerate(paged_items):  # type: int, ListItem
                 data.append(item.properties)
-                # print("{0}: {1}".format(index, item.id))
-            # all_items = [item for item in paged_items]
-            # print("Total items count: {0}".format(len(all_items)))
             return data
-
-        def get_total_count(target_list):
-            # type: (List) -> None
-            all_items = target_list.items.get_all(5000, print_progress).execute_query()
-            print("Total items count: {0}".format(len(all_items)))
 
         if list_obj is not None:
             large_list = list_obj
@@ -250,3 +280,6 @@ class Sharepoint(Office365Base):
         df = pd.DataFrame(retval)
         df = df.set_index("ID")
         return df
+
+
+

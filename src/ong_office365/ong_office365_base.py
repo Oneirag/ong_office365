@@ -1,8 +1,31 @@
 import configparser
 from abc import abstractmethod
 from ong_office365.msal_token_manager import MsalTokenManager
-from ong_office365 import config
-# from ong_sharepoint.selenium_token_manager import MsalTokenManager
+from ong_office365 import config, logger
+from tqdm import tqdm
+
+
+class DownloadProgressBar(tqdm):
+    """
+    Adapted from https://stackoverflow.com/a/64138857
+    Usage:
+    with DownloadProgressBar(total=whatever_total) as t:
+                object.download_media(media, filepath , progress_callback=t.update_to)
+    """
+
+    def __init__(self, total: int, incremental: bool = False):
+        if total == 0:
+            logger.warning("Total size should not be zero")
+        self.incremental = incremental
+        super().__init__(total=total, unit="B", unit_scale=True)
+
+    def update_to(self, current):
+        if not isinstance(current, int):
+            current = len(current)
+        if self.incremental:
+            self.update(current)
+        else:
+            self.update(current - self.n)
 
 
 class Office365Base:
@@ -80,6 +103,7 @@ class Office365Base:
         :param to_token_response: True (default) to use acquire_token_response or false to use acquire_token
         :param timeout: time for waiting for user login. Defaults to config(config_key, "timeout")
         """
+        self.logger = logger
         client_id = client_id or self.client_id
         email = email or self.email
         tenant = tenant or self.tenant

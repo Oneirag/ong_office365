@@ -49,6 +49,7 @@ class MsalTokenManager:
         :param scopes: scopes to request access to, defaults to ['.default']
         :param timeout: timeout to wait for interactive flow. Defaults to 20 sec
         """
+        self.__last_scopes = None     # scopes received in token (only for fresh tokens)
         self.__last_token = None      # Last obtained token
         self.server = server
         self.email = email
@@ -80,7 +81,8 @@ class MsalTokenManager:
     @property
     def last_decoded_token(self) -> dict:
         """Return last access token decoded as a dict"""
-        return msal_decode_jwt_token(self.last_token)
+        decoded_token = msal_decode_jwt_token(self.last_token)
+        return decoded_token
 
     def get_scopes(self, scopes: list= None) -> list:
         """Gets a list of scopes for auth"""
@@ -116,6 +118,8 @@ class MsalTokenManager:
             client_id=self.client_id, authority=self.authority, token_cache=self.cache)
         result = app.acquire_token_silent_with_error(
             scopes=self.scopes, account=account)
+        if result is not None and "error" in result:
+            logger.debug(f"Error in token: error='{result.get('error')}' suberror='{result.get('suberror')}'")
         return result
 
     def msal_delegated_interactive_flow(self, scopes, prompt=None, login_hint=None, domain_hint=None, claims_challenge=None,
@@ -159,7 +163,12 @@ class MsalTokenManager:
             logger.debug("First authentication for " + self.email)
             result = self.msal_delegated_interactive_flow(self.scopes, login_hint=self.email)
         if result:
-            self.__last_token = result['access_token']
+            if "error" in result:
+                logger.error(f"{result['error']}: {result['error_description']}")
+            else:
+                self.__last_token = result['access_token']
+                # Scopes are only received for fresh tokens. If token came from cache this is not received
+                self.__last_scopes = result.get('scopes')
         return result
 
     def acquire_token_response(self) -> TokenResponse:

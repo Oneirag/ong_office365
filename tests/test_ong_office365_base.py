@@ -68,8 +68,8 @@ class TestOngOffice365Base(unittest.TestCase):
         cls.clients = {parse_client_id(client_id): client_class(parse_client_id(client_id))
                        for client_id in cls.client_ids()}
 
-    def test_scopes(self, client_id, client: Office365Base, target_scopes: list | str = None):
-        """Tests that expected scopes have been received for given client"""
+    def verify_scopes(self, client_id, client: Office365Base, target_scopes: list | str = None):
+        """Checks that expected scopes have been received for given client"""
         scopes = client.token_scopes()
         logger.debug(f"Scopes received for {client_id}: {scopes}")
         self.assertTrue(len(scopes) > 0)
