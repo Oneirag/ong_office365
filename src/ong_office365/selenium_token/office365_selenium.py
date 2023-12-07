@@ -1,7 +1,7 @@
 """
 Authenticate in office365 using selenium
 """
-
+import os
 from seleniumwire import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -13,16 +13,27 @@ from ong_office365 import config, logger
 class SeleniumTokenManager:
 
     def __init__(self):
+        username = os.path.split(os.path.expanduser('~'))[-1]
         self.driver_path = None
         self.profile_path = None
+
+        def format_user(value, username: str):
+            if not value:
+                return value
+            else:
+                return value.format(user=username)
+
         if "selenium" in config.sections():
-            self.driver_path = config["selenium"].get("chrome_driver_path")
+            self.driver_path = format_user(config["selenium"].get("chrome_driver_path"), username)
             # Path To Custom Profile (needed for using browser cache)
-            self.profile_path = config["selenium"].get("profile_path")
+            self.profile_path = format_user(config["selenium"].get("profile_path"), username)
 
     def get_driver(self, headless: bool = False):
         """Initializes a driver, either headless (hidden) or not"""
+        # options = uc.ChromeOptions()
         options = webdriver.ChromeOptions()
+        # Avoid anoying messages on chrome startup
+        options.add_argument("--disable-notifications")
         if self.driver_path:
             options.binary_location = self.driver_path
         if self.profile_path:
@@ -66,29 +77,31 @@ class SeleniumTokenManager:
         return sessionId
 
     def get_auth_office(self):
-        #TODO: Does not work, does not get the API token
         """Gets token from https://www.office.com"""
-        driver = webdriver.Chrome()
+        driver = self.get_driver(headless=False)
         # Easier --- office365 main page
         url = "https://www.office.com/login?es=Click&ru=%2F"
+        # url = "https://www.office.com/?auth=2"
+        # Capture only calls to sharepoint
+        driver.scopes = [
+            '.*sharepoint.*',
+        ]
         driver.get(url)
         token = None
+        from time import time
+        now = time()
         try:
-            req = driver.wait_for_request("search/_api/SP.OAuth.Token/Acquire",
-                                          timeout=200)
-            # element = WebDriverWait(driver, 200).until(
-            #     # EC.presence_of_element_located((By.ID, "myDynamicElement"))
-            #     EC.title_is("SharePoint")
-            # )
-            token = json.loads(gzip.decompress(req.response.body))
+            req = driver.wait_for_request("sharepoint.com/_api/", timeout=200)
+            token = req.headers['Authorization'].split(" ")[-1]
         finally:
             driver.quit()
 
-        driver.close()
         return token
 
 
 if __name__ == '__main__':
     token_manager = SeleniumTokenManager()
-    print(token_manager.get_auth_forms())
+    # print(token_manager.get_auth_forms())
     print(token_manager.get_auth_office())
+
+
