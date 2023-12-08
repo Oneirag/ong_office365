@@ -1,5 +1,6 @@
 import unittest
 from typing import Type
+import re
 
 from ong_office365.ong_office365_base import Office365Base
 from abc import abstractmethod
@@ -69,7 +70,14 @@ class TestOngOffice365Base(unittest.TestCase):
                        for client_id in cls.client_ids()}
 
     def verify_scopes(self, client_id, client: Office365Base, target_scopes: list | str = None):
-        """Checks that expected scopes have been received for given client"""
+        """
+        Checks that expected scopes have been received for given client
+        :param client_id: id of client (just for logging purposes)
+        :param client: object for getting received scopes
+        :param target_scopes: list of scopes (as regular expressions) to be matched against received
+        scopes
+        :return: True if received scopes are valid (there are no missing ones)
+        """
         scopes = client.token_scopes()
         logger.debug(f"Scopes received for {client_id}: {scopes}")
         self.assertTrue(len(scopes) > 0)
@@ -77,7 +85,12 @@ class TestOngOffice365Base(unittest.TestCase):
             target_scopes = [target_scopes]
         elif target_scopes is None:
             target_scopes = list()
-        missing_scopes = set(target_scopes).difference(scopes)
+        received_scopes = []
+        for target_scope in target_scopes:
+            for scope in scopes:
+                if re.match(target_scope, scope):
+                    received_scopes.append(target_scope)
+        missing_scopes = set(target_scopes).difference(received_scopes)
         self.assertTrue(len(missing_scopes) == 0,
                         f"Some expected scopes where not received: {missing_scopes}")
 

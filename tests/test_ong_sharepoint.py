@@ -112,7 +112,7 @@ class TestSharepoint(TestOngOffice365Base):
     @iterate_client_ids
     def test_400_list_lists(self, client_id: str, sharepoint: Sharepoint):
         """List the available sharepoint lists of current site"""
-        self.verify_scopes(client_id, sharepoint, ['Sites.ReadWrite.All'])
+        self.verify_scopes(client_id, sharepoint, target_scopes=[r'^Sites\.(ReadWrite|FullControl)\.All$'])
         res = sharepoint.get_lists()
         print(res)
         self.assertTrue(len(res) > 2, f"Too few lists: {res}")

@@ -3,11 +3,12 @@ Authenticate in office365 using selenium
 """
 import os
 from seleniumwire import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 
-import json
-import gzip
 from ong_office365 import config, logger
+from office365.runtime.auth.token_response import TokenResponse
+from ong_office365.msal_token_manager import msal_decode_jwt_token
 
 
 class SeleniumTokenManager:
@@ -16,6 +17,7 @@ class SeleniumTokenManager:
         username = os.path.split(os.path.expanduser('~'))[-1]
         self.driver_path = None
         self.profile_path = None
+        self.last_token_office = None
 
         def format_user(value, username: str):
             if not value:
@@ -76,27 +78,52 @@ class SeleniumTokenManager:
 
         return sessionId
 
-    def get_auth_office(self):
+    def get_auth_office(self, force_refresh: bool = False, force_logout: bool=False):
         """Gets token from https://www.office.com"""
-        driver = self.get_driver(headless=False)
+        if self.last_token_office and not force_refresh:
+            return self.last_token_office
+        driver = self.get_driver(headless=True)     # Start with headless
         # Easier --- office365 main page
+        logout_url = "https://www.office.com/estslogout?ru=%2F"
         url = "https://www.office.com/login?es=Click&ru=%2F"
         # url = "https://www.office.com/?auth=2"
         # Capture only calls to sharepoint
         driver.scopes = [
             '.*sharepoint.*',
         ]
+        if force_logout:
+            driver.get(logout_url)
         driver.get(url)
         token = None
-        from time import time
-        now = time()
         try:
-            req = driver.wait_for_request("sharepoint.com/_api/", timeout=200)
+            req = driver.wait_for_request("sharepoint.com/_api/", timeout=4)
             token = req.headers['Authorization'].split(" ")[-1]
+        except TimeoutException:
+                # Retry with interactive
+                driver.quit()
+                driver = self.get_driver(headless=False)
+                driver.get(url)
+                req = driver.wait_for_request("sharepoint.com/_api/", timeout=60)
+                token = req.headers['Authorization'].split(" ")[-1]
         finally:
             driver.quit()
-
+        self.last_token_office = token
         return token
+
+    def get_token_office(self) -> TokenResponse:
+        """Authenticates to www.office.com returning token as dict that can be used with office365 library"""
+        _ = self.get_auth_office()
+
+        token_dict = dict(access_token=self.last_token_office, token_type="Bearer")
+        return TokenResponse.from_json(token_dict)
+
+    @property
+    def last_decoded_token(self) -> dict:
+        """Return last access token decoded as a dict"""
+        if not self.last_token_office:
+            self.get_auth_office(force_refresh=True)
+        decoded_token = msal_decode_jwt_token(self.last_token_office)
+        return decoded_token
 
 
 if __name__ == '__main__':
