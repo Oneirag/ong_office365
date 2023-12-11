@@ -1,6 +1,8 @@
 """
 Authenticate in office365 using selenium
 """
+from __future__ import annotations
+
 import os
 import re
 from seleniumwire import webdriver
@@ -44,8 +46,9 @@ class SeleniumTokenManager:
         """Initializes a driver, either headless (hidden) or not"""
         # options = uc.ChromeOptions()
         options = webdriver.ChromeOptions()
-        # Avoid anoying messages on chrome startup
+        # Avoid annoying messages on chrome startup
         options.add_argument("--disable-notifications")
+        options.add_argument("google-base-url=")
         if self.driver_path:
             options.binary_location = self.driver_path
         if self.profile_path:
@@ -77,9 +80,10 @@ class SeleniumTokenManager:
         session.headers.update({'__requestverificationtoken': antiforgery_token})
         return session
 
-    def get_auth_forms_cookies(self) -> tuple:
+    def get_auth_forms_cookies(self, timeout_headless: int =4) -> tuple:
         """
-        Gets all cookies needed for ms forms api calls andd Gets also antiForgeryToken
+        Gets all cookies needed for ms forms api calls and gets also antiForgeryToken
+        :param timeout_headless: time to wait for page load in headless mode before launching browser window
         :return: a tuple cookies_list, antiForgeryToken. Cookies_list is a list of dictionaries
         """
         """"""
@@ -92,7 +96,7 @@ class SeleniumTokenManager:
 
         driver = self.get_driver(headless=True)
         driver.get(url)
-        driver.implicitly_wait(2)
+        driver.implicitly_wait(time_to_wait=timeout_headless)
         ck = driver.get_cookie("OIDCAuth.forms")
         if ck:
             logger.debug("Valid cookie found in cache")
@@ -111,8 +115,7 @@ class SeleniumTokenManager:
         driver.quit()
         return cookies_list, anti_forgery
 
-
-    def get_auth_office(self, force_refresh: bool = False, force_logout: bool=False):
+    def get_auth_office(self, force_refresh: bool = False, force_logout: bool = False):
         """Gets token from https://www.office.com"""
         if self.last_token_office and not force_refresh:
             return self.last_token_office
