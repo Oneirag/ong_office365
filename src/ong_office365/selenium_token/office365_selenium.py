@@ -2,14 +2,24 @@
 Authenticate in office365 using selenium
 """
 import os
+import re
 from seleniumwire import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
+from requests.sessions import Session
 
 from ong_office365 import config, logger
 from office365.runtime.auth.token_response import TokenResponse
 from ong_office365.msal_token_manager import msal_decode_jwt_token
 
+
+def find_antiforgery_token(page_source: str) -> str | None:
+    """Finds antiforgery token within page source (it is a javascript)"""
+    pattern = fr'"antiForgeryToken":"?(?P<value>.*?)"?,'
+    found = re.findall(pattern, page_source)
+    if found:
+        return found[0]
+    return None
 
 class SeleniumTokenManager:
 
@@ -46,10 +56,34 @@ class SeleniumTokenManager:
         driver = webdriver.Chrome(options=options)
         return driver
 
-    def get_auth_forms(self) -> dict:
-        """Gets cookie needed for ms forms api calls"""
-        # First, attempt to get cookie from cache
+    def get_auth_forms(self) -> str | None:
+        """Gets cookie value for authenticating in forms"""
+        cookies = self.get_auth_forms_cookies()
+        for ck in cookies:
+            if ck['name'] == "OIDCAuth.forms":
+                return ck['value']
+        return None
 
+    def get_auth_forms_session(self, session: Session=None) -> Session:
+        """Returns a request.Session object with the right cookie and headers for ms forms api"""
+        session = session or Session()
+        cookies, antiforgery_token = SeleniumTokenManager().get_auth_forms_cookies()
+        for c in cookies:
+            c.pop("sameSite", None)
+            c['expires'] = c.pop('expiry', None)
+            c['rest'] = {'HttpOnly': c.pop('httpOnly')}
+            session.cookies.set(**c)
+        # Add header for validation token
+        session.headers.update({'__requestverificationtoken': antiforgery_token})
+        return session
+
+    def get_auth_forms_cookies(self) -> tuple:
+        """
+        Gets all cookies needed for ms forms api calls andd Gets also antiForgeryToken
+        :return: a tuple cookies_list, antiForgeryToken. Cookies_list is a list of dictionaries
+        """
+        """"""
+        # First, attempt to get cookie from cache
         url = "https://www.office.com/login?es=Click&ru=%2F"
         # For ms forms
         url = "https://go.microsoft.com/fwlink/p/?LinkID=2115709&clcid=0x409&culture=en-us&country=us"
@@ -62,21 +96,21 @@ class SeleniumTokenManager:
         ck = driver.get_cookie("OIDCAuth.forms")
         if ck:
             logger.debug("Valid cookie found in cache")
-            return ck['value']
         else:
             logger.debug("No valid cooke found. Attempting manually")
+            driver.quit()   # Close headless driver
+            driver = self.get_driver(headless=False)
+            driver.get(url)
+            cookie = None
+            try:
+                cookie = WebDriverWait(driver, timeout=120).until(lambda d: d.get_cookie('OIDCAuth.forms'))
+            except:
+                logger.error("Could not find auth cookie. Ms forms authentication failed")
+        cookies_list = driver.get_cookies()
+        anti_forgery = find_antiforgery_token(driver.page_source)
         driver.quit()
-        driver = self.get_driver(headless=False)
-        driver.get(url)
-        sessionId = None
-        try:
-            cookie = WebDriverWait(driver, timeout=120).until(lambda d: d.get_cookie('OIDCAuth.forms'))
-            sessionId = cookie['value']
-            driver.close()
-        finally:
-            driver.quit()
+        return cookies_list, anti_forgery
 
-        return sessionId
 
     def get_auth_office(self, force_refresh: bool = False, force_logout: bool=False):
         """Gets token from https://www.office.com"""
