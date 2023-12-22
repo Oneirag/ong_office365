@@ -10,11 +10,6 @@ import uuid
 import pandas as pd
 from ong_office365.selenium_token.office365_selenium import SeleniumTokenManager
 
-class Form:
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
 
 class Forms:
 
@@ -171,7 +166,6 @@ class Question:
 
 
 if __name__ == '__main__':
-
     forms = Forms()
     new_form = forms.create_form("Formulario para borrar")
     form_id = new_form['id']
