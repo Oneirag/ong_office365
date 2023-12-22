@@ -42,13 +42,13 @@ class SeleniumTokenManager:
             # Path To Custom Profile (needed for using browser cache)
             self.profile_path = format_user(config["selenium"].get("profile_path"), username)
 
-    def get_driver(self, headless: bool = False):
+    def get_driver(self, headless: bool = False, avoid_home_page: bool=True):
         """Initializes a driver, either headless (hidden) or not"""
         # options = uc.ChromeOptions()
         options = webdriver.ChromeOptions()
         # Avoid annoying messages on chrome startup
         options.add_argument("--disable-notifications")
-        options.add_argument("google-base-url=")
+        options.add_argument("google-base-url=about:blank")
         if self.driver_path:
             options.binary_location = self.driver_path
         if self.profile_path:
@@ -57,6 +57,10 @@ class SeleniumTokenManager:
             options.add_argument("--headless=new")  # for Chrome >= 109
         logger.debug(f"Initializing driver with options: {options}")
         driver = webdriver.Chrome(options=options)
+        # Stop loading home page!
+        if avoid_home_page:
+            driver.get("chrome://version/")
+            driver.execute_script("window.stop();")
         return driver
 
     def get_auth_forms(self) -> str | None:
@@ -67,10 +71,12 @@ class SeleniumTokenManager:
                 return ck['value']
         return None
 
-    def get_auth_forms_session(self, session: Session=None) -> Session:
+    def get_auth_forms_session(self, session: Session = None) -> Session | None:
         """Returns a request.Session object with the right cookie and headers for ms forms api"""
         session = session or Session()
         cookies, antiforgery_token = SeleniumTokenManager().get_auth_forms_cookies()
+        if not antiforgery_token:
+            return None
         for c in cookies:
             c.pop("sameSite", None)
             c['expires'] = c.pop('expiry', None)
@@ -107,7 +113,7 @@ class SeleniumTokenManager:
             driver.get(url)
             cookie = None
             try:
-                cookie = WebDriverWait(driver, timeout=120).until(lambda d: d.get_cookie('OIDCAuth.forms'))
+                cookie = WebDriverWait(driver, timeout=180).until(lambda d: d.get_cookie('OIDCAuth.forms'))
             except:
                 logger.error("Could not find auth cookie. Ms forms authentication failed")
         cookies_list = driver.get_cookies()
