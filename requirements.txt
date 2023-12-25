@@ -11,3 +11,6 @@ tqdm            # Nice progress bar
 # sqlalchemy.orm  # Test if it can be directly connected to a sharepoint list
 selenium
 selenium-wire
+ong_utils[jwt]
+ong_utils
+

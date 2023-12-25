@@ -4,13 +4,14 @@ https://blog.darrenjrobinson.com/interactive-authentication-to-microsoft-graph-u
 Needs pip install msal msal_extensions pyjwt==1.7.1 requests datetime
 Adapted for pyjwt 2.x using https://blog.darrenjrobinson.com/decoding-azure-ad-access-tokens-with-python/
 """
-import sys
 import re
-import jwt
+import sys
 
 import msal
 from msal_extensions import PersistedTokenCache, FilePersistenceWithDataProtection, KeychainPersistence, FilePersistence
 from office365.runtime.auth.token_response import TokenResponse
+from ong_utils import decode_jwt_token
+
 from ong_office365 import logger
 
 
@@ -18,23 +19,6 @@ def is_uuid(tenant) -> bool:
     """True it a tenant is a  uuid (and not .microsoftonline.com should be added for the authority"""
     UUID_PATTERN = re.compile(r'^[\da-f]{8}-([\da-f]{4}-){3}[\da-f]{12}$', re.IGNORECASE)
     return bool(UUID_PATTERN.match(tenant))
-
-
-def msal_decode_jwt_token(access_token: str) -> dict:
-    """Decodes access token and returns it as a dict"""
-    # Code for jwt 2.x
-    if jwt.__version__ >= "2.0.0":
-        # Example of checking token expiry time to expire in the next 10 minutes
-        alg = jwt.get_unverified_header(access_token)['alg']
-        decodedAccessToken = jwt.decode(access_token, algorithms=[alg], options={"verify_signature": False})
-    else:
-        # code for jwt 1.x
-        decodedAccessToken = jwt.decode(access_token, verify=False)
-
-    # Token Expiry
-    # tokenExpiry = datetime.fromtimestamp(int(decodedAccessToken['exp']))
-
-    return decodedAccessToken
 
 
 class MsalTokenManager:
@@ -49,8 +33,8 @@ class MsalTokenManager:
         :param scopes: scopes to request access to, defaults to ['.default']
         :param timeout: timeout to wait for interactive flow. Defaults to 20 sec
         """
-        self.__last_scopes = None     # scopes received in token (only for fresh tokens)
-        self.__last_token = None      # Last obtained token
+        self.__last_scopes = None  # scopes received in token (only for fresh tokens)
+        self.__last_token = None  # Last obtained token
         self.server = server
         self.email = email
         self.tenant_prefix = tenant
@@ -81,10 +65,10 @@ class MsalTokenManager:
     @property
     def last_decoded_token(self) -> dict:
         """Return last access token decoded as a dict"""
-        decoded_token = msal_decode_jwt_token(self.last_token)
+        decoded_token = decode_jwt_token(self.last_token)
         return decoded_token
 
-    def get_scopes(self, scopes: list= None) -> list:
+    def get_scopes(self, scopes: list = None) -> list:
         """Gets a list of scopes for auth"""
         scopes = scopes or ['.default']
         if self.server is None:  # a Graph client as default
@@ -122,7 +106,8 @@ class MsalTokenManager:
             logger.debug(f"Error in token: error='{result.get('error')}' suberror='{result.get('suberror')}'")
         return result
 
-    def msal_delegated_interactive_flow(self, scopes, prompt=None, login_hint=None, domain_hint=None, claims_challenge=None,
+    def msal_delegated_interactive_flow(self, scopes, prompt=None, login_hint=None, domain_hint=None,
+                                        claims_challenge=None,
                                         timeout=None, port=None, extra_scopes_to_consent=None):
         logger.debug("Initiate an Interactive Flow (auth via Browser) to get AAD Access and Refresh Tokens.")
         timeout = timeout or self.timeout
@@ -174,4 +159,3 @@ class MsalTokenManager:
     def acquire_token_response(self) -> TokenResponse:
         result = self.acquire_token()
         return TokenResponse.from_json(result)
-

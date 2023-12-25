@@ -12,8 +12,8 @@ import pandas as pd
 from office365.runtime.client_request_exception import ClientRequestException
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.files.file import File
-from office365.sharepoint.folders.folder import Folder
 from office365.sharepoint.files.system_object_type import FileSystemObjectType
+from office365.sharepoint.folders.folder import Folder
 from office365.sharepoint.listitems.listitem import ListItem
 from office365.sharepoint.lists.list import List
 from office365.sharepoint.webs.web import Web

@@ -9,10 +9,10 @@ from seleniumwire import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from requests.sessions import Session
+from ong_utils import decode_jwt_token
 
 from ong_office365 import config, logger
 from office365.runtime.auth.token_response import TokenResponse
-from ong_office365.msal_token_manager import msal_decode_jwt_token
 
 
 def find_antiforgery_token(page_source: str) -> str | None:
@@ -22,6 +22,7 @@ def find_antiforgery_token(page_source: str) -> str | None:
     if found:
         return found[0]
     return None
+
 
 class SeleniumTokenManager:
 
@@ -165,7 +166,7 @@ class SeleniumTokenManager:
         """Return last access token decoded as a dict"""
         if not self.last_token_office:
             self.get_auth_office(force_refresh=True)
-        decoded_token = msal_decode_jwt_token(self.last_token_office)
+        decoded_token = decode_jwt_token(self.last_token_office)
         return decoded_token
 
 
