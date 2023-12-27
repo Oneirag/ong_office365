@@ -3,11 +3,12 @@ Authenticate in office365 using selenium
 """
 from __future__ import annotations
 
+import datetime
 import os
 
-from ong_utils import Chrome, find_js_variable
+from ong_utils import Chrome, find_js_variable, InternalStorage
 from requests.sessions import Session
-from ong_utils import decode_jwt_token
+from ong_utils import decode_jwt_token, decode_jwt_token_expiry
 
 from ong_office365 import config, logger
 from office365.runtime.auth.token_response import TokenResponse
@@ -18,10 +19,25 @@ def find_antiforgery_token(page_source: str) -> str | None:
     return find_js_variable(page_source, "antiForgeryToken", ":")
 
 
+def save_form_auth(cookies: list, antiforgery_token: str, session: Session):
+    """Saves cookies and antiforgery token in session"""
+    for c in cookies:
+        c.pop("sameSite", None)
+        c['expires'] = c.pop('expiry', None)
+        c['rest'] = {'HttpOnly': c.pop('httpOnly', None)}
+        session.cookies.set(**c)
+    # Add header for validation token
+    session.headers.update({'__requestverificationtoken': antiforgery_token})
+
+
 class SeleniumTokenManager:
+
+    key_auth_forms = "auth_forms"
+    key_jwt_token = "jwt_token"
 
     def __init__(self):
         username = os.path.split(os.path.expanduser('~'))[-1]
+        self.internal_storage = InternalStorage(self.__class__.__name__)
         self.driver_path = None
         self.profile_path = None
         self.last_token_office = None
@@ -45,19 +61,13 @@ class SeleniumTokenManager:
     def get_auth_forms_session(self, session: Session = None) -> Session | None:
         """Returns a request.Session object with the right cookie and headers for ms forms api"""
         session = session or Session()
-        cookies, antiforgery_token = SeleniumTokenManager().get_auth_forms_cookies()
+        cookies, antiforgery_token = self.get_auth_forms_cookies()
         if not antiforgery_token:
             return None
-        for c in cookies:
-            c.pop("sameSite", None)
-            c['expires'] = c.pop('expiry', None)
-            c['rest'] = {'HttpOnly': c.pop('httpOnly')}
-            session.cookies.set(**c)
-        # Add header for validation token
-        session.headers.update({'__requestverificationtoken': antiforgery_token})
+        save_form_auth(cookies, antiforgery_token, session)
         return session
 
-    def get_auth_forms_cookies(self, timeout_headless: int =4) -> tuple:
+    def get_auth_forms_cookies(self, timeout_headless: int = 4) -> tuple:
         """
         Gets all cookies needed for ms forms api calls and gets also antiForgeryToken
         :param timeout_headless: time to wait for page load in headless mode before launching browser window
@@ -65,10 +75,19 @@ class SeleniumTokenManager:
         """
         """"""
         # First, attempt to get cookie from cache
+        cookies_list, anti_forgery = self.internal_storage.get_value(self.key_auth_forms) or (None, None)
+        if cookies_list is not None:
+            session = Session()
+            save_form_auth(cookies_list, anti_forgery, session)
+            url = "https://forms.office.com/landing"  # ¿Can be used for checking?
+            res = session.get(url)
+            if res.status_code == 200:
+                logger.info("Using cached forms auth")
+                return cookies_list, anti_forgery
+
         url = "https://www.office.com/login?es=Click&ru=%2F"
         # For ms forms
         url = "https://go.microsoft.com/fwlink/p/?LinkID=2115709&clcid=0x409&culture=en-us&country=us"
-        url = "https://forms.office.com/landing"  # ¿Can be used for checking?
         url = "https://forms.office.com/Pages/DesignPageV2.aspx?origin=Marketing"
         cookie_name = "OIDCAuth.forms"
         driver = self.chrome.wait_for_cookie(url, cookie_name=cookie_name, timeout=60*4,
@@ -78,12 +97,20 @@ class SeleniumTokenManager:
         cookies_list = driver.get_cookies()
         anti_forgery = find_antiforgery_token(driver.page_source)
         self.chrome.quit_driver()
+        self.internal_storage.store_value(self.key_auth_forms, (cookies_list, anti_forgery))
         return cookies_list, anti_forgery
 
-    def get_auth_office(self, force_refresh: bool = False, force_logout: bool = False):
+    def get_auth_office(self, force_refresh: bool = False, force_logout: bool = False) -> str | None:
         """Gets token from https://www.office.com"""
         if self.last_token_office and not force_refresh:
             return self.last_token_office
+        name_key = "upn"    # key to use in decoded jwt token for username
+        token = self.internal_storage.get_value(self.key_jwt_token)
+        if token:
+            if decode_jwt_token_expiry(token) > datetime.datetime.now():
+                decoded = decode_jwt_token(token)
+                logger.info(f"Using cached token for user '{decoded[name_key]}'")
+                return token
         # Easier --- office365 main page
         logout_url = "https://www.office.com/estslogout?ru=%2F"
         url = "https://www.office.com/login?es=Click&ru=%2F"
@@ -97,13 +124,16 @@ class SeleniumTokenManager:
             token = None
         else:
             token = req.headers['Authorization'].split(" ")[-1]
+            self.internal_storage.store_value(self.key_jwt_token, token)
+            decoded = decode_jwt_token(token)
+            logger.info(f"New token obtained for user '{decoded[name_key]}'")
         self.last_token_office = token
+        # self.chrome.quit_driver()
         return token
 
     def get_token_office(self) -> TokenResponse:
         """Authenticates to www.office.com returning token as dict that can be used with office365 library"""
         _ = self.get_auth_office()
-
         token_dict = dict(access_token=self.last_token_office, token_type="Bearer")
         return TokenResponse.from_json(token_dict)
 
