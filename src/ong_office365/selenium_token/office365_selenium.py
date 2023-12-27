@@ -4,10 +4,8 @@ Authenticate in office365 using selenium
 from __future__ import annotations
 
 import os
-import re
-from seleniumwire import webdriver
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.support.ui import WebDriverWait
+
+from ong_utils import Chrome, find_js_variable
 from requests.sessions import Session
 from ong_utils import decode_jwt_token
 
@@ -17,11 +15,7 @@ from office365.runtime.auth.token_response import TokenResponse
 
 def find_antiforgery_token(page_source: str) -> str | None:
     """Finds antiforgery token within page source (it is a javascript)"""
-    pattern = fr'"antiForgeryToken":"?(?P<value>.*?)"?,'
-    found = re.findall(pattern, page_source)
-    if found:
-        return found[0]
-    return None
+    return find_js_variable(page_source, "antiForgeryToken", ":")
 
 
 class SeleniumTokenManager:
@@ -31,6 +25,7 @@ class SeleniumTokenManager:
         self.driver_path = None
         self.profile_path = None
         self.last_token_office = None
+        self.block_pages = None
 
         def format_user(value, username: str):
             if not value:
@@ -42,35 +37,10 @@ class SeleniumTokenManager:
             self.driver_path = format_user(config["selenium"].get("chrome_driver_path"), username)
             # Path To Custom Profile (needed for using browser cache)
             self.profile_path = format_user(config["selenium"].get("profile_path"), username)
+            self.block_pages = config["selenium"].get("block_pages")
 
-    def get_driver(self, headless: bool = False, avoid_home_page: bool=True):
-        """Initializes a driver, either headless (hidden) or not"""
-        # options = uc.ChromeOptions()
-        options = webdriver.ChromeOptions()
-        # Avoid annoying messages on chrome startup
-        options.add_argument("--disable-notifications")
-        options.add_argument("google-base-url=about:blank")
-        if self.driver_path:
-            options.binary_location = self.driver_path
-        if self.profile_path:
-            options.add_argument(f"user-data-dir={self.profile_path}")
-        if headless:
-            options.add_argument("--headless=new")  # for Chrome >= 109
-        logger.debug(f"Initializing driver with options: {options}")
-        driver = webdriver.Chrome(options=options)
-        # Stop loading home page!
-        if avoid_home_page:
-            driver.get("chrome://version/")
-            driver.execute_script("window.stop();")
-        return driver
-
-    def get_auth_forms(self) -> str | None:
-        """Gets cookie value for authenticating in forms"""
-        cookies = self.get_auth_forms_cookies()
-        for ck in cookies:
-            if ck['name'] == "OIDCAuth.forms":
-                return ck['value']
-        return None
+        self.chrome = Chrome(driver_path=self.driver_path, profile_path=self.profile_path,
+                             logger=logger, block_pages=self.block_pages)
 
     def get_auth_forms_session(self, session: Session = None) -> Session | None:
         """Returns a request.Session object with the right cookie and headers for ms forms api"""
@@ -100,57 +70,33 @@ class SeleniumTokenManager:
         url = "https://go.microsoft.com/fwlink/p/?LinkID=2115709&clcid=0x409&culture=en-us&country=us"
         url = "https://forms.office.com/landing"  # ¿Can be used for checking?
         url = "https://forms.office.com/Pages/DesignPageV2.aspx?origin=Marketing"
-
-        driver = self.get_driver(headless=True)
-        driver.get(url)
-        driver.implicitly_wait(time_to_wait=timeout_headless)
-        ck = driver.get_cookie("OIDCAuth.forms")
-        if ck:
-            logger.debug("Valid cookie found in cache")
-        else:
-            logger.debug("No valid cooke found. Attempting manually")
-            driver.quit()   # Close headless driver
-            driver = self.get_driver(headless=False)
-            driver.get(url)
-            cookie = None
-            try:
-                cookie = WebDriverWait(driver, timeout=180).until(lambda d: d.get_cookie('OIDCAuth.forms'))
-            except:
-                logger.error("Could not find auth cookie. Ms forms authentication failed")
+        cookie_name = "OIDCAuth.forms"
+        driver = self.chrome.wait_for_cookie(url, cookie_name=cookie_name, timeout=60*4,
+                                             timeout_headless=timeout_headless)
+        if driver is None:
+            raise ValueError("Could not authenticate")
         cookies_list = driver.get_cookies()
         anti_forgery = find_antiforgery_token(driver.page_source)
-        driver.quit()
+        self.chrome.quit_driver()
         return cookies_list, anti_forgery
 
     def get_auth_office(self, force_refresh: bool = False, force_logout: bool = False):
         """Gets token from https://www.office.com"""
         if self.last_token_office and not force_refresh:
             return self.last_token_office
-        driver = self.get_driver(headless=True)     # Start with headless
         # Easier --- office365 main page
         logout_url = "https://www.office.com/estslogout?ru=%2F"
         url = "https://www.office.com/login?es=Click&ru=%2F"
         # url = "https://www.office.com/?auth=2"
-        # Capture only calls to sharepoint
-        driver.scopes = [
-            '.*sharepoint.*',
-        ]
         if force_logout:
+            driver = self.chrome.get_driver(headless=True)  # Start with headless
             driver.get(logout_url)
-        driver.get(url)
-        token = None
-        try:
-            req = driver.wait_for_request("sharepoint.com/_api/", timeout=4)
+        request_url = "sharepoint.com/_api/"
+        req = self.chrome.wait_for_request(url, request_url, timeout=60, timeout_headless=10)
+        if not req:
+            token = None
+        else:
             token = req.headers['Authorization'].split(" ")[-1]
-        except TimeoutException:
-                # Retry with interactive
-                driver.quit()
-                driver = self.get_driver(headless=False)
-                driver.get(url)
-                req = driver.wait_for_request("sharepoint.com/_api/", timeout=60)
-                token = req.headers['Authorization'].split(" ")[-1]
-        finally:
-            driver.quit()
         self.last_token_office = token
         return token
 
@@ -172,7 +118,7 @@ class SeleniumTokenManager:
 
 if __name__ == '__main__':
     token_manager = SeleniumTokenManager()
-    # print(token_manager.get_auth_forms())
+    print(token_manager.get_auth_forms_cookies())
     print(token_manager.get_auth_office())
 
 

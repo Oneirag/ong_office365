@@ -9,8 +9,9 @@ loguru
 tqdm            # Nice progress bar
 # sqlalchemy      # Test if it can be directly connected to a sharepoint list
 # sqlalchemy.orm  # Test if it can be directly connected to a sharepoint list
-selenium
-selenium-wire
+# selenium
+# selenium-wire
 ong_utils[jwt]
+ong_utils[selenium] >= 0.5.0
 ong_utils
 
