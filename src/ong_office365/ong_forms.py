@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import json
 import datetime
-import uuid
 
 import pandas as pd
 from ong_office365.selenium_token.office365_selenium import SeleniumTokenManager
+from ong_office365.forms_objects.questions import Section, QuestionText, QuestionChoice
 
 
 class Forms:
@@ -103,118 +103,70 @@ class Forms:
     def create_form(self, title: str, **kwargs) -> dict:
         return self.create_entity(entity="forms", title=title, **kwargs)
 
+    def create_section(self, form_id, section: Section) -> dict:
+        print(section.payload())
+        q_section = self.create_entity(entity=f"forms('{form_id}')/descriptiveQuestions", **section.payload())
+        return q_section
 
-class Question:
-
-    type_option = ""
-    def __init__(self, title, **kwargs):
-        # Create an id based on current timestamp
-        new_id = "r" + uuid.uuid1().hex
-        self.question = {
-            "title": title,
-            "id": new_id
-        }
-        self.question.update(kwargs)
-
-    @staticmethod
-    def serialize_json(dictionary: dict) -> str:
-        return json.dumps(dictionary, ensure_ascii=False, separators=(',', ':'))
-
-    def create_option_question(self, choices: list | tuple, allowOtherAnswer: str=False, subtitle: str=None):
-        questionInfo = {"Choices": [dict(Description=choice,
-                                         # IsGenerated=True
-                                         ) for choice in choices],
-                        # By default accepts multiple answers. This fixes single answer
-                        #,"ChoiceType": 1, "AllowOtherAnswer": False,
-                        # "OptionDisplayStyle":"ListAll","ChoiceRestrictionType":"None"
-                        }
-        if not allowOtherAnswer:
-            questionInfo.update({"ChoiceType": 1, "AllowOtherAnswer": False})
-        if subtitle:
-            questionInfo['ShowSubtitle'] = True
-
-        json_data = {
-            'questionInfo': self.serialize_json(questionInfo),
-            'type': 'Question.Choice',
-            'id': id,
-        }
-        if subtitle:
-            json_data['subtitle'] = subtitle
-        json_data.update(self.question)
-        return json_data
-
-    def create_text_question(self, multiline:bool=False, subtitle:str=None) -> dict:
-        """Use multiline=True for long answers"""
-        question_info = dict(MultiLine=multiline)
-        if subtitle:
-            question_info['ShowSubtitle'] = True
-        json_data = {
-            "questionInfo": self.serialize_json(question_info),
-            "type": "Question.TextField"
-        }
-        if subtitle:
-            json_data['subtitle'] = subtitle
-        json_data.update(self.question)
-        return json_data
-
-    def create_section(self):
-        json_data = {
-            "type": "Question.ColumnGroup"
-        }
-        json_data.update(self.question)
-        return json_data
+    def create_question(self, form_id, question: QuestionChoice | QuestionText):
+        print(question.payload())
+        q_question = self.create_entity(entity=f"forms('{form_id}')/questions", **question.payload())
+        return q_question
 
 
 if __name__ == '__main__':
     forms = Forms()
-    new_form = forms.create_form("Formulario para borrar")
+
+    new_form = forms.create_form("Deletable form: " + datetime.datetime.now().isoformat(),
+                                 description="Subtitle goes here",
+                                 # These settings are added when creating sections
+                                 settings='{"ShuffleQuestionOrder":false}',
+                                 )
     form_id = new_form['id']
     print(form_id)
-    # my_form = forms.get_form_by(title="Liga de las commodities 2023 - Jornada Diciembre")
-    # form_id = my_form[0]['id']
-    forms.update_form(form_id, title="Este es otro titulo:" + datetime.datetime.now().isoformat(),
-                      description="Subtítulo")
+    # forms.update_form(form_id, title="Another title:" + datetime.datetime.now().isoformat(),
+    #                   description="Subtitle")
+    #forms.update_form(form_id, description="Subtitle goes here",
+    #                  settings='{"ShuffleQuestionOrder":false}')
 
-    # To see if sections work
-    forms.update_form(form_id, settings='{"ShuffleQuestionOrder":false}')
+    # Create a first section, where menu will be hosted
+    section = Section(title="Main menu", subtitle="Choose section")
+    menu_section = forms.create_section(form_id, section)
+    # Create sections
+    sections = []
+    for section_id in range(3):
+        # Creates a new section that jumps directly to the end after filling it
+        section = Section(title=f"Section {section_id}", subtitle=f"Sample section {section_id}",
+                          to_the_end=True)
+        q_section = forms.create_section(form_id, section)
+        sections.append(q_section)
+        # Add some questions to the section
+        question_text = QuestionText(title=f"Long text question of section {section_id}", multiline=True)
+        q_text = forms.create_question(form_id, question_text)
+        question_option = QuestionChoice(title=f"Choice question of section {section_id}",
+                                         choices=["One", "Two"], subtitle="Select one")
+        q_option = forms.create_question(form_id, question_option)
+        question_text = QuestionText(title=f"Short text question for section {section_id}", multiline=False,
+                                     subtitle="Just one line")
+        q_text = forms.create_question(form_id, question_text)
+        question_option = QuestionChoice(title=f"Multiple choice question of section {section_id}",
+                                         choices=["One", "Two", "three"], subtitle="Select multiple",
+                                         allow_other_answer=True)
+        q_option = forms.create_question(form_id, question_option)
 
-    # Create an empty session first
-    order1 = 2823734420165760
-    section = Question("primera sección", order=order1).create_section()
-    section_empty = Question("").create_section()
-    q_section = forms.create_entity(entity=f"forms('{form_id}')/descriptiveQuestions", **section)
-    print(q_section)
-    question_text = Question("Pregunta de la seccion1", order=q_section['order']).create_text_question(subtitle="bla bla")
-    q_text = forms.create_entity(entity=f"forms('{form_id}')/questions", **question_text)
-    print(q_text)
+    # Now, create a question menu that sends to each of the branches
+    menu = QuestionChoice(title="", choices=sections, order=menu_section['order'] + 1)
+    q_menu = forms.create_question(form_id, menu)
 
-    section = Question("segunda sección", order=order1+1).create_section()
-    q_section = forms.create_entity(entity=f"forms('{form_id}')/descriptiveQuestions", **section)
-    print(q_section)
-    question_choice = Question("Pregunta de ejemplo con opciones", order=q_section['order']).create_option_question(["Una", "Otra", "Y otra"],
-                                                                                          subtitle="hola que tal")
-    q_choice = forms.create_entity(entity=f"forms('{form_id}')/questions", **question_choice)
-    print(q_choice)
-
-    question_text = Question("Pregunta de ejemplo de texto", order=q_section['order']).create_text_question(subtitle="bla bla")
-    q_text = forms.create_entity(entity=f"forms('{form_id}')/questions", **question_text)
-    print(q_text)
-
-
-    # question_text = dict(
-    #    #  questionInfo=json.dumps(json.dumps(dict(MultiLine=True))),    # False para respuesta corta
-    #     title="Pregunta de ejemplo con de respuesta larga",
-    #     type="Question.TextField"
-    # )
-    # q_text = forms.create_entity(entity=f"forms('{form_id}')/questions", **question_text)
-    # print(q_text)
 
     # all_forms = forms.get_forms()
     # print(all_forms)
     # form_id = all_forms[-1]['id']
+    title_to_search = "One title to search for"
     my_form = forms.get_form_by(title="One title to search for")
-    form_id = my_form[-1]['id']
-    df = forms.get_pandas_result(form_id)
-    print(df)
-    # print(forms.get_form_responses(form_id))
-    # print(forms.get_form_questions(form_id))
+    if my_form:
+        form_id = my_form[-1]['id']
+        df = forms.get_pandas_result(form_id)
+        print(df)
+    else:
+        print(f"Form '{title_to_search}' not found")

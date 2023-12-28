@@ -85,5 +85,6 @@ Add it to the config file (`~/.ong_office365.cfg` or `ong_office365.cfg` in curr
 profile_path=copy here the chrome profile path. If empty no permanent cache will be used
 # Optional
 chrome_driver_path=path where chromedriver executable is located
-
+# Optional: pages to block and avoid loading (e.g. put homepage here to avoid opening it)
+block_pages=https://www.someserver.com/
 ```
