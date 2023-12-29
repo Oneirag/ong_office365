@@ -129,7 +129,7 @@ class SeleniumTokenManager:
                 logger.info(f"Using cached token for user '{decoded[name_key]}'")
                 return token
         # Easier --- office365 main page
-        logout_ufrl = "https://www.office.com/estslogout?ru=%2F"
+        logout_url = "https://www.office.com/estslogout?ru=%2F"
         url = "https://www.office.com/login?es=Click&ru=%2F"
         # url = "https://www.office.com/?auth=2"
         if force_logout:
