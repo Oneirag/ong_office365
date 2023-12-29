@@ -78,7 +78,7 @@ if __name__ == '__main__':
     in_file = "EnterpriseAppsList.csv"
     apps = ["sharepoint", "onedrive"]
     for app in apps:
-        email = config.get(app, "email")
+        email = config("email")
         out_file = f"client_ids_{email}_{app}.csv"
         test_func = getattr(TestFunctions, f"test_{app}")
         check_client_ids(in_file, out_file, test_func=test_func)

@@ -1,4 +1,3 @@
-import configparser
 from abc import abstractmethod
 from ong_office365.msal_token_manager import MsalTokenManager
 from ong_office365 import config, logger
@@ -41,15 +40,7 @@ class Office365Base:
         pass
 
     def __get_config(self, key: str, default_value=None):
-        section = self.config_section()
-        try:
-            cfg = config.get(section, key)
-        except configparser.NoOptionError as e:
-            return default_value
-        if not cfg:
-            return default_value
-        cfg = cfg.strip().splitlines()
-        return cfg[0]
+        return config(key, default_value)
 
     @property
     def timeout(self):

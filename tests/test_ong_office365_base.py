@@ -4,13 +4,14 @@ import re
 
 from ong_office365.ong_office365_base import Office365Base
 from abc import abstractmethod
-from ong_office365 import config, logger
+from ong_office365 import logger
+from ong_office365 import test_config as config
 
 unittest.TestLoader.sortTestMethodsUsing = None
 
 
 def parse_client_id(client_id: str) -> str:
-    """Parses client_id either from client id or from a url of the client, such as
+    """Parses client_id either from client id or from an url of the client, such as
     https://launcher.myapps.microsoft.com/api/signin/{client_id_goes_here}?tenantId={tenant_id_goes_here}"
     """
     if client_id.startswith("https://"):
@@ -57,7 +58,7 @@ class TestOngOffice365Base(unittest.TestCase):
 
     @classmethod
     def _get_configs(cls, key) -> list:
-        return config.get(cls.client_class().config_section(), key).strip().splitlines()
+        return config(cls.client_class().config_section()).get(key)
 
     @classmethod
     def client_ids(cls):
@@ -66,7 +67,14 @@ class TestOngOffice365Base(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         client_class = cls.client_class()
-        cls.clients = {parse_client_id(client_id): client_class(parse_client_id(client_id))
+        config_dict = config(cls.client_class().config_section())
+        server = config_dict.get("site_url")
+        email = config_dict.get("email")
+        tenant = config_dict.get("tenant")
+        cls.clients = {parse_client_id(client_id): client_class(parse_client_id(client_id),
+                                                                email=email, server=server,
+                                                                tenant=tenant,
+                                                                )
                        for client_id in cls.client_ids()}
 
     def verify_scopes(self, client_id, client: Office365Base, target_scopes: list | str = None):

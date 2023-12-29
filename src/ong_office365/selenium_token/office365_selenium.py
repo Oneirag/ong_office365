@@ -60,11 +60,10 @@ class SeleniumTokenManager:
             else:
                 return value.format(user=username)
 
-        if "selenium" in config.sections():
-            self.driver_path = format_user(config["selenium"].get("chrome_driver_path"), username)
-            # Path To Custom Profile (needed for using browser cache)
-            self.profile_path = format_user(config["selenium"].get("profile_path"), username)
-            self.block_pages = config["selenium"].get("block_pages")
+        self.driver_path = format_user(config("selenium").get("chrome_driver_path"), username)
+        # Path To Custom Profile (needed for using browser cache)
+        self.profile_path = format_user(config("selenium").get("profile_path"), username)
+        self.block_pages = config("selenium").get("block_pages")
 
         self.chrome = Chrome(driver_path=self.driver_path, profile_path=self.profile_path,
                              logger=logger, block_pages=self.block_pages)
@@ -130,7 +129,7 @@ class SeleniumTokenManager:
                 logger.info(f"Using cached token for user '{decoded[name_key]}'")
                 return token
         # Easier --- office365 main page
-        logout_url = "https://www.office.com/estslogout?ru=%2F"
+        logout_ufrl = "https://www.office.com/estslogout?ru=%2F"
         url = "https://www.office.com/login?es=Click&ru=%2F"
         # url = "https://www.office.com/?auth=2"
         if force_logout:

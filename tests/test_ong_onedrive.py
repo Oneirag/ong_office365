@@ -1,3 +1,4 @@
+import unittest
 from typing import Type
 
 from ong_office365.ong_office365_base import Office365Base
@@ -12,11 +13,16 @@ class TestOnedrive(TestOngOffice365Base):
         return OneDrive
 
     @iterate_client_ids
-    def test_101_list_files(self, client_id: str, sharepoint: OneDrive):
+    def test_101_list_files(self, client_id: str, onedrive: OneDrive):
         """Tests that client_id can list files in the endpoint"""
-        print(sharepoint.list_files())
+        print(onedrive.list_files())
 
     @iterate_client_ids
-    def test_100_list_drives(self, client_id: str, sharepoint: OneDrive):
+    def test_100_list_drives(self, client_id: str, onedrive: OneDrive):
         """Tests that client_id can list files in the endpoint"""
-        print(sharepoint.list_drives())
+        print(onedrive.list_drives())
+
+
+if __name__ == '__main__':
+    unittest.main()
+
