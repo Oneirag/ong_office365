@@ -84,7 +84,8 @@ ong_office365:
     # Needed to access to sharepoint. Typically, in the form of https://${tenant}.sharepoint.com/sites/{site}
     site_url: whateversite
   selenium:
-    # Required. If path contains {username} will be replaced with current username
+    # Required. If path contains {user} will be replaced with current username. If you want to use chrome seetings
+    # Navigate to chrome://version and copy-paste profile path from it
     profile_path: copy here the chrome profile path. If empty no permanent cache will be used
     # Optional
     chrome_driver_path: path where chromedriver executable is located

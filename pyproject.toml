@@ -1,0 +1,29 @@
+[project]
+name = "ong_office365"
+version = "0.1.0"
+# license = {file = "LICENSE.txt"}
+authors = [
+    { email = "oneirag@yahoo.es", name = "Oscar Neira" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+description = "Makes Office365-REST-Python-Client to work with MFA. Stores kwt tokens and passwords to deal with Sharepoint sites and MS Forms with MFA authentication, without asking for password all time."
+
+dynamic = ["dependencies"]
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+
+[tool.setuptools.packages.find]
+# scanning for namespace packages is true by default in pyproject.toml, so
+# you do NOT need to include the following line.
+namespaces = true
+where = ["src"]
+
+[project.urls]  # Optional
+"Homepage" = "https://github.com/Oneirag/ong_office365"
+"Source" = "https://github.com/Oneirag/ong_office365"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
