@@ -113,7 +113,10 @@ class SeleniumTokenManager:
             cookies_list = driver.get_cookies()
             anti_forgery = find_antiforgery_token(driver.page_source)
             self.chrome.quit_driver()
-            self.internal_storage.store_value(self.key_auth_forms, (cookies_list, anti_forgery))
+            try:
+                self.internal_storage.store_value(self.key_auth_forms, (cookies_list, anti_forgery))
+            except:
+                logger.warning("Could not store cookie in internal storage")
         return cookies_list, anti_forgery
 
     def get_auth_office(self, force_refresh: bool = False, force_logout: bool = False) -> str | None:

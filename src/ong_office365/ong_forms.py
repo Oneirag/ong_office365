@@ -150,6 +150,7 @@ class Forms:
 
 if __name__ == '__main__':
     forms = Forms()
+    exit(0)
 
     new_form = forms.create_form("Deletable form: " + datetime.datetime.now().isoformat(),
                                  description="Subtitle goes here",
