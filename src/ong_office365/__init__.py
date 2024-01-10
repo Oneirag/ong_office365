@@ -7,13 +7,17 @@ from ong_utils import OngConfig
 
 name = "ong_office365"
 _cfg = OngConfig(name, default_app_cfg={
-        "email": "someone@contoso.com",
-        "tenant": "contoso",
-        # client_id should come from https://go.microsoft.com/fwlink/?linkid=2083908
-        # This is a sample value from a google search
-        "client_id": "6731de76-14a6-49ae-97bc-6eba6914391e",
-        "sharepoint": "https://contoso.sharepoint.com/sites/example_site",
-    })
+    "email": "someone@contoso.com",
+    "tenant": "contoso",
+    # client_id should come from https://go.microsoft.com/fwlink/?linkid=2083908
+    # This is a sample value from a google search
+    "client_id": "6731de76-14a6-49ae-97bc-6eba6914391e",
+    "sharepoint": "https://contoso.sharepoint.com/sites/example_site",
+    "selenium": {
+        "profile_path": "leave to null to disable cache, navigate to chrome://version and copy profile dir to use"
+                        " global profile"
+    }
+})
 config = _cfg.config
 test_config = _cfg.config_test
 # logger = _cfg.logger

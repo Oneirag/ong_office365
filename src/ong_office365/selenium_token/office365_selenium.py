@@ -8,17 +8,17 @@ import os
 
 from ong_utils import Chrome, find_js_variable, InternalStorage
 from requests.sessions import Session
-from ong_utils import decode_jwt_token, decode_jwt_token_expiry
+from ong_utils import decode_jwt_token, decode_jwt_token_expiry, to_list
 
 from ong_office365 import config, logger
 from office365.runtime.auth.token_response import TokenResponse
 
 
-def is_cookie_expired(cookies_list: list | None, cookie_name="OIDCAuth.forms") -> bool:
+def is_cookie_expired(cookies_list: list | None, cookie_name: str | list="OIDCAuth.forms") -> bool:
     """Checks if a certain cookie is expired. Returns True if cookie is expired or cookies_list is None"""
     if cookies_list:
         for ck in cookies_list:
-            if ck['name'] == cookie_name:
+            if ck['name'] in to_list(cookie_name):
                 return ck['expiry'] < (datetime.datetime.now().timestamp() + 60)
     return True
 
@@ -44,7 +44,7 @@ class SeleniumTokenManager:
     key_auth_forms = "auth_forms"
     key_jwt_token = "jwt_token"
     # Cookie used for authentication in ms forms
-    cookie_name = "OIDCAuth.forms"
+    cookie_name = ["OIDCAuth.forms", "RPSSecAuthForms"]
 
     def __init__(self):
         username = os.path.split(os.path.expanduser('~'))[-1]
@@ -88,15 +88,16 @@ class SeleniumTokenManager:
         and double-checks it navigating to organizationInfo"""
         cookies_list, anti_forgery = self.internal_storage.get_value(self.key_auth_forms) or (None, None)
         if not is_cookie_expired(cookies_list, self.cookie_name):
-            # session = Session()
-            # save_form_auth(cookies_list, anti_forgery, session)
-            # req = session.get("https://forms.office.com/formapi/api/organizationInfo")
+            session = Session()
+            save_form_auth(cookies_list, anti_forgery, session)
+            req = session.get("https://forms.office.com/formapi/api/organizationInfo")
             # req = session.get("https://forms.office.com/formapi/api/forms")
-            #if req.status_code != 403:      # Forbidden
-            #    logger.info("Using cached forms auth")
-            #    return cookies_list, anti_forgery
-            logger.info("Using cached forms auth")
-            return cookies_list, anti_forgery
+            if req.status_code == 200:      # OK
+               logger.info("Using cached forms auth")
+               return cookies_list, anti_forgery
+            else:
+                logger.info("Cached forms auth invalid. Authenticating again")
+                self.internal_storage.remove_stored_value(self.key_auth_forms)
         return None, None
 
     def __get_auth_forms_cookies(self, timeout_headless: int = 4) -> tuple:
@@ -106,10 +107,16 @@ class SeleniumTokenManager:
             # url = "https://www.office.com/login?es=Click&ru=%2F"
             # For ms forms
             url = "https://forms.office.com/Pages/DesignPageV2.aspx?origin=Marketing"
-            driver = self.chrome.wait_for_cookie(url, cookie_name=self.cookie_name, timeout=60*4,
+            # driver = self.chrome.wait_for_cookie(url, cookie_name=self.cookie_name, timeout=60*4,
+            #                                      timeout_headless=timeout_headless)
+            # driver = self.chrome.wait_for_cookie(url, cookie_name=self.cookie_name, timeout=60*4,
+            #                                     timeout_headless=timeout_headless)
+
+            req = self.chrome.wait_for_request(url, "formapi/api/", timeout=60*4,
                                                  timeout_headless=timeout_headless)
-            if driver is None:
-                raise ValueError("Could not authenticate")
+            # if driver is None:
+            #     raise ValueError("Could not authenticate")
+            driver = self.chrome.get_driver(reuse_last=True)
             cookies_list = driver.get_cookies()
             anti_forgery = find_antiforgery_token(driver.page_source)
             self.chrome.quit_driver()
@@ -139,7 +146,7 @@ class SeleniumTokenManager:
             driver = self.chrome.get_driver(headless=True)  # Start with headless
             driver.get(logout_url)
         request_url = "sharepoint.com/_api/"
-        req = self.chrome.wait_for_request(url, request_url, timeout=60, timeout_headless=10)
+        req = self.chrome.wait_for_request(url, request_url, timeout=180, timeout_headless=10)
         if not req:
             token = None
         else:

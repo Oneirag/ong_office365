@@ -11,8 +11,9 @@ tqdm            # Nice progress bar
 # sqlalchemy.orm  # Test if it can be directly connected to a sharepoint list
 # selenium
 # selenium-wire
+ong_utils >= 0.5.5
 ong_utils[jwt]
-ong_utils[selenium] >= 0.5.0
-ong_utils
+ong_utils[selenium] >= 0.5.5
 requests_ntlm       # for auhenticating to a ntlm sharepoint
+
 
