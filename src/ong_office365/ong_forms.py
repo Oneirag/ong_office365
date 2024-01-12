@@ -8,19 +8,28 @@ import json
 
 import pandas as pd
 
+from ong_office365 import logger as log
 from ong_office365.forms_objects.questions import Section, QuestionText, QuestionChoice
 from ong_office365.selenium_token.office365_selenium import SeleniumTokenManager
 
 
+def remove_sections(questions: list) -> list:
+    """Removes sections from question list"""
+    retval = list(q for q in questions if q['type'] not in ('Question.ColumnGroup',))
+    return retval
+
+
 class Forms:
 
-    def __init__(self):
-        self.token_manager = SeleniumTokenManager()
+    def __init__(self, logger=None):
+        self.logger = logger or log
+        self.token_manager = SeleniumTokenManager(logger=logger)
         self.session = None
         self.login()
         if self.session is None:
             raise ValueError("Could not log in")
-        self.__base_url = "https://forms.office.com/formapi/api/"
+        self.__base_url = "https://forms.office.com"
+        self.__api_base_url = f"{self.__base_url}/formapi/api/"
 
     def login(self, fresh=False):
         if fresh:
@@ -29,7 +38,7 @@ class Forms:
         self.session = self.token_manager.get_auth_forms_session()
 
     def __query_entity(self, entity: str, method="get", json_data=None, params=None):
-        return self.__query(method=method, url=self.__base_url + entity, params=params, json_data=json_data)
+        return self.__query(method=method, url=self.__api_base_url + entity, params=params, json_data=json_data)
 
     def __query(self, url: str, method="get", params=None, json_data=None, retry=False) -> dict:
         resp = self.session.request(method=method, url=url, params=params, json=json_data)
@@ -53,11 +62,20 @@ class Forms:
         self.__query_entity(entity=f"forms('{form_id}')", method="patch", json_data=kwargs)
 
     def get_form_by(self, **kwargs) -> list:
-        """Gets list of all forms matching kwargs.
-        Example: get_form_by(title='sample title')"""
+        """Gets list of all forms matching kwargs. By default, it does not return softDeleted forms.
+        Example: get_form_by(title='sample title')
+        If you want to show all forms (including deleted), use get_form_by(title="sample title", softDeleted=None)
+        If you want to show deleted forms, use get_form_by(title="sample title", softDeleted=1)
+        """
+        softDeleted = kwargs.pop("softDeleted", 0)
         filter = [("$filter", f"{key} eq '{value}'") for key, value in kwargs.items()]
         resp = self.__query_entity("forms", params=filter)
-        return resp['value']
+        forms = resp['value']
+        # Removes softDeleted manually...as filter does not work!
+        if softDeleted is not None:
+            forms = [f for f in forms if f['softDeleted'] == int(softDeleted)]
+
+        return forms
 
     def get_forms(self, filter=None) -> list:
         resp = self.__query_entity("forms")
@@ -69,11 +87,13 @@ class Forms:
             retval.append(f)
         return retval
 
-    def get_form_responses(self, form_id: str, all_info: bool = False, question_names: list = None):
-        """Use all_info to get a dict with all info about each answer as a dict"""
+    def get_form_responses(self, form_id: str, all_info: bool = False) -> list:
+        """Uses all_info to get a dict with all info about each answer as a list. It can return multiple answers for the
+        same user"""
+        questions = self.get_form_questions(form_id)
         resp = self.__query_entity(f"forms('{form_id}')/responses")
         responses = resp['value']
-        retval = dict()
+        retval = list()
         for idx, r in enumerate(responses):
             answers = json.loads(r['answers'])
             answers_dict = dict()
@@ -84,38 +104,33 @@ class Forms:
                 answers_dict['Hora de finalizacion'] = pd.Timestamp(r['submitDate'])
                 answers_dict['Correo electrónico'] = r['responder']
                 answers_dict['Nombre'] = r['responderName']
-            if question_names:
-                answers_dict.update({question_names[i]: ans['answer1'] for i, ans in enumerate(answers)})
-            else:
-                answers_dict.update({i: ans['answer1'] for i, ans in enumerate(answers)})
-
-            retval[r['responderName']] = answers_dict
+            for ans in answers:
+                question_id = ans['questionId']
+                if question_id in questions:
+                    answers_dict[questions[question_id]] = ans['answer1']
+            # retval[r['responderName']] = answers_dict
+            retval.append(answers_dict)
         return retval
-        # return responses
 
     def get_form_questions(self, form_id: str):
         resp = self.__query_entity(f"forms('{form_id}')/questions")
-        questions = resp['value']
+        # Removes sections
+        questions = remove_sections(resp['value'])
         retval = dict()
         for q in questions:
             retval[q['id']] = q['title']
             # q['subtitle'] is also interesting
         return retval
-        # return responses
 
     def get_pandas_result(self, form_id: str) -> pd.DataFrame:
-        questions = self.get_form_questions(form_id)
-        question_names = list(questions.values())
-        answers = self.get_form_responses(form_id, all_info=True, question_names=question_names)
-        df = pd.DataFrame.from_dict(answers, orient="index")
-        # df.columns[:len(names)] = names
-        # df.columns = list(questions.values())
+        answers = self.get_form_responses(form_id, all_info=True)
+        df = pd.DataFrame(answers).set_index("Nombre", drop=False)
         return df
 
     def create_entity(self, entity: str, **kwargs) -> dict:
         """Entity can be forms, forms('id')/questions, etc, etc"""
         new_entity = self.__query_entity(entity=entity, method="post", json_data=kwargs)
-        print(new_entity)
+        self.logger.debug(new_entity)
         return new_entity
 
     def create_form(self, title: str, settings='{"ShuffleQuestionOrder":false}', **kwargs) -> dict:
@@ -129,23 +144,27 @@ class Forms:
         return self.create_entity(entity="forms", title=title, settings=settings, **kwargs)
 
     def create_section(self, form_id, section: Section) -> dict:
-        print(section.payload())
+        self.logger.debug(section.payload())
         q_section = self.create_entity(entity=f"forms('{form_id}')/descriptiveQuestions", **section.payload())
         return q_section
 
     def create_question(self, form_id, question: QuestionChoice | QuestionText):
-        print(question.payload())
+        self.logger.debug(question.payload())
         q_question = self.create_entity(entity=f"forms('{form_id}')/questions", **question.payload())
         return q_question
 
-    def delete_form(self, form_id):
+    def delete_form(self, form_id: str):
         """Permanently deletes form"""
         self.__query_entity(f"forms('{form_id}')", method="delete")
 
-    def trash_form(self, form_id):
+    def trash_form(self, form_id: str):
         """Sends form to trash bin"""
         self.__query_entity(f"forms('{form_id}')", method="patch",
                             json_data={"softDeleted": 1, "collectionId": None})
+
+    def get_form_response_page_url(self, form_id: str) -> str:
+        """Returns url to respond to a form"""
+        return f"{self.__base_url}/Pages/ResponsePage.aspx?id={form_id}"
 
 
 if __name__ == '__main__':

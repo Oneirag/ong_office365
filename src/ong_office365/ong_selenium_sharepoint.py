@@ -1,4 +1,6 @@
-from ong_office365 import logger
+from __future__ import annotations
+
+from ong_office365 import logger as log
 from ong_office365.ong_sharepoint import Sharepoint
 from ong_office365.selenium_token.office365_selenium import SeleniumTokenManager
 from office365.sharepoint.client_context import ClientContext
@@ -24,11 +26,11 @@ class SeleniumSharepoint(Sharepoint):
         except:
             return self.__get_decoded("aud")
 
-    def __init__(self, client_id: str = None, server: str = None):
-        """Inits class. Ignores parent init and client_id (used for compatibility. Server is an optional
+    def __init__(self, server: str = None, logger=None, **kwargs):
+        """Init class with server url and optionally a logger. Rest of params are ignored
         parameter that can be also used"""
         self.token_manager = SeleniumTokenManager()
-        self.logger = logger
+        self.logger = logger or log
         self.ctx = ClientContext(server or self.server).with_access_token(self.token_manager.get_token_office)
 
 

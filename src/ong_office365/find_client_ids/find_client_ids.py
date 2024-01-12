@@ -9,7 +9,7 @@ import os
 import pandas as pd
 from ong_office365.ong_sharepoint import Sharepoint
 from ong_office365.ong_onedrive import OneDrive
-from ong_office365 import config, logger
+from ong_office365 import config, logger as log
 
 if sys.platform.startswith("win"):
     from pywinauto.keyboard import send_keys

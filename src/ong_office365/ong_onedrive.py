@@ -15,19 +15,19 @@ class OneDrive(Office365Base):
         return "onedrive"
 
     def __init__(self, client_id: str = None, email: str = None, tenant: str = None, server=None,
-                 timeout=None):
+                 timeout=None, logger=None):
         server = None  # server is not needed in Graph clients, such as Onedrive
         super().__init__(client_id=client_id, email=email, server=server, tenant=tenant,
-                         init_context=GraphClient, to_token_response=False, timeout=timeout)
+                         init_context=GraphClient, to_token_response=False, timeout=timeout, logger=logger)
 
     def drives(self):
         drives = self.ctx.drives.get().top(100).execute_query()
         for drive in drives:
-            print("Drive url: {0}".format(drive.web_url))
+            self.logger.info("Drive url: {0}".format(drive.web_url))
 
     def me(self):
         me = self.ctx.me.get().execute_query()
-        print(me.user_principal_name)
+        self.logger.debug(me.user_principal_name)
         return me.user_principal_name
 
     def list_files(self, max=5):
@@ -36,7 +36,7 @@ class OneDrive(Office365Base):
             # type: (DriveItem) ->  None
             drive_items = root_folder.children.get().top(max).execute_query()
             for drive_item in drive_items:
-                print("Name: {0}".format(drive_item.web_url))
+                self.logger.debug("Name: {0}".format(drive_item.web_url))
                 if drive_item.is_folder:  # is folder facet?
                     enum_folders_and_files(drive_item)
 
@@ -46,4 +46,4 @@ class OneDrive(Office365Base):
     def list_drives(self):
         drives = self.ctx.drives.get().top(100).execute_query()
         for drive in drives:
-            print("Drive url: {0}".format(drive.web_url))
+            self.logger.info("Drive url: {0}".format(drive.web_url))

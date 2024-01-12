@@ -1,6 +1,7 @@
 from office365.sharepoint.client_context import ClientContext, AuthenticationContext, RequestOptions
 from requests_ntlm import HttpNtlmAuth
 from ong_office365.ong_sharepoint import Sharepoint
+from ong_office365 import logger as log
 
 
 class NTMLAuth(AuthenticationContext):
@@ -20,9 +21,10 @@ class NTLMSharepoint(Sharepoint):
     Extends the Sharepoint class to a site that uses NTLM as authentication with username and password,
     instead of using JKT tokens
     """
-    def __init__(self, base_url: str, username: str, password: str):
+    def __init__(self, base_url: str, username: str, password: str, logger=None):
         """
         Creates the class, using  base_url (part of the site url before /sites), and username and password for auth
         """
         self.ctx = ClientContext(base_url, auth_context=NTMLAuth(base_url, username, password))
+        self.logger = logger or log
 

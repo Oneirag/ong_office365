@@ -10,7 +10,7 @@ from ong_utils import Chrome, find_js_variable, InternalStorage
 from requests.sessions import Session
 from ong_utils import decode_jwt_token, decode_jwt_token_expiry, to_list
 
-from ong_office365 import config, logger
+from ong_office365 import config, logger as log
 from office365.runtime.auth.token_response import TokenResponse
 
 
@@ -46,7 +46,8 @@ class SeleniumTokenManager:
     # Cookie used for authentication in ms forms
     cookie_name = ["OIDCAuth.forms", "RPSSecAuthForms"]
 
-    def __init__(self):
+    def __init__(self, logger=None):
+        self.logger = logger or log
         username = os.path.split(os.path.expanduser('~'))[-1]
         self.internal_storage = InternalStorage(self.__class__.__name__)
         self.driver_path = None
@@ -93,10 +94,10 @@ class SeleniumTokenManager:
             req = session.get("https://forms.office.com/formapi/api/organizationInfo")
             # req = session.get("https://forms.office.com/formapi/api/forms")
             if req.status_code == 200:      # OK
-               logger.info("Using cached forms auth")
-               return cookies_list, anti_forgery
+                self.logger.info("Using cached forms auth")
+                return cookies_list, anti_forgery
             else:
-                logger.info("Cached forms auth invalid. Authenticating again")
+                self.logger.info("Cached forms auth invalid. Authenticating again")
                 self.internal_storage.remove_stored_value(self.key_auth_forms)
         return None, None
 
@@ -123,7 +124,7 @@ class SeleniumTokenManager:
             try:
                 self.internal_storage.store_value(self.key_auth_forms, (cookies_list, anti_forgery))
             except:
-                logger.warning("Could not store cookie in internal storage")
+                self.logger.warning("Could not store cookie in internal storage")
         return cookies_list, anti_forgery
 
     def get_auth_office(self, force_refresh: bool = False, force_logout: bool = False) -> str | None:
@@ -136,7 +137,7 @@ class SeleniumTokenManager:
             if decode_jwt_token_expiry(token) > datetime.datetime.now():
                 session = Session()
                 decoded = decode_jwt_token(token)
-                logger.info(f"Using cached token for user '{decoded[name_key]}'")
+                self.logger.info(f"Using cached token for user '{decoded[name_key]}'")
                 return token
         # Easier --- office365 main page
         logout_url = "https://www.office.com/estslogout?ru=%2F"
@@ -153,7 +154,7 @@ class SeleniumTokenManager:
             token = req.headers['Authorization'].split(" ")[-1]
             self.internal_storage.store_value(self.key_jwt_token, token)
             decoded = decode_jwt_token(token)
-            logger.info(f"New token obtained for user '{decoded[name_key]}'")
+            self.logger.info(f"New token obtained for user '{decoded[name_key]}'")
         self.last_token_office = token
         self.chrome.close_driver()
         return token

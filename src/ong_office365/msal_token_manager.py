@@ -4,6 +4,8 @@ https://blog.darrenjrobinson.com/interactive-authentication-to-microsoft-graph-u
 Needs pip install msal msal_extensions pyjwt==1.7.1 requests datetime
 Adapted for pyjwt 2.x using https://blog.darrenjrobinson.com/decoding-azure-ad-access-tokens-with-python/
 """
+from __future__ import annotations
+
 import re
 import sys
 
@@ -12,7 +14,7 @@ from msal_extensions import PersistedTokenCache, FilePersistenceWithDataProtecti
 from office365.runtime.auth.token_response import TokenResponse
 from ong_utils import decode_jwt_token
 
-from ong_office365 import logger
+from ong_office365 import logger as log
 
 
 def is_uuid(tenant) -> bool:
@@ -23,7 +25,7 @@ def is_uuid(tenant) -> bool:
 
 class MsalTokenManager:
     def __init__(self, client_id: str, email: str, server: str | None, tenant: str,
-                 scopes: list = None, timeout: int = None):
+                 scopes: list = None, timeout: int = None, logger=None):
         """
         Initializes a token manager
         :param client_id: app client id
@@ -32,7 +34,9 @@ class MsalTokenManager:
         :param tenant: tenant name or id
         :param scopes: scopes to request access to, defaults to ['.default']
         :param timeout: timeout to wait for interactive flow. Defaults to 20 sec
+        :param logger: optional logger, or use library default logger
         """
+        self.logger = logger or log
         self.__last_scopes = None  # scopes received in token (only for fresh tokens)
         self.__last_token = None  # Last obtained token
         self.server = server
@@ -81,7 +85,7 @@ class MsalTokenManager:
             else:
                 retval = [f"{self.server}/{scope}" for scope in scopes]
                 # raise ValueError(f"Server {self.server} not understood")
-        logger.trace(f"{scopes=}")
+        self.logger.debug(f"{scopes=}")
         return retval
 
     def msal_cache_accounts(self, username=None):
@@ -103,13 +107,13 @@ class MsalTokenManager:
         result = app.acquire_token_silent_with_error(
             scopes=self.scopes, account=account)
         if result is not None and "error" in result:
-            logger.debug(f"Error in token: error='{result.get('error')}' suberror='{result.get('suberror')}'")
+            self.logger.debug(f"Error in token: error='{result.get('error')}' suberror='{result.get('suberror')}'")
         return result
 
     def msal_delegated_interactive_flow(self, scopes, prompt=None, login_hint=None, domain_hint=None,
                                         claims_challenge=None,
                                         timeout=None, port=None, extra_scopes_to_consent=None):
-        logger.debug("Initiate an Interactive Flow (auth via Browser) to get AAD Access and Refresh Tokens.")
+        self.logger.debug("Initiate an Interactive Flow (auth via Browser) to get AAD Access and Refresh Tokens.")
         timeout = timeout or self.timeout
         app = msal.PublicClientApplication(client_id=self.client_id, authority=self.authority, token_cache=self.cache)
 
@@ -130,12 +134,12 @@ class MsalTokenManager:
         result = None
         if accounts:
             for account in accounts:
-                logger.debug("Found account in MSAL Cache: " + account['username'])
-                logger.debug("Attempting to obtain a new Access Token using the Refresh Token")
+                self.logger.debug("Found account in MSAL Cache: " + account['username'])
+                self.logger.debug("Attempting to obtain a new Access Token using the Refresh Token")
                 result = self.msal_delegated_refresh(account)
                 if result is None:
                     # Get a new Access Token using the Interactive Flow
-                    logger.debug("Interactive Authentication required to obtain a new Access Token.")
+                    self.logger.debug("Interactive Authentication required to obtain a new Access Token.")
                     result = self.msal_delegated_interactive_flow(self.scopes, login_hint=self.email)
                 else:
                     break
@@ -145,11 +149,11 @@ class MsalTokenManager:
         else:
             # No accounts found in the local MSAL Cache
             # Trigger interactive authentication flow
-            logger.debug("First authentication for " + self.email)
+            self.logger.debug("First authentication for " + self.email)
             result = self.msal_delegated_interactive_flow(self.scopes, login_hint=self.email)
         if result:
             if "error" in result:
-                logger.error(f"{result['error']}: {result['error_description']}")
+                self.logger.error(f"{result['error']}: {result['error_description']}")
             else:
                 self.__last_token = result['access_token']
                 # Scopes are only received for fresh tokens. If token came from cache this is not received

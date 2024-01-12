@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import unittest
 from typing import Type
 import re
@@ -71,7 +73,7 @@ class TestOngOffice365Base(unittest.TestCase):
         server = config_dict.get("site_url")
         email = config_dict.get("email")
         tenant = config_dict.get("tenant")
-        cls.clients = {parse_client_id(client_id): client_class(parse_client_id(client_id),
+        cls.clients = {parse_client_id(client_id): client_class(client_id=parse_client_id(client_id),
                                                                 email=email, server=server,
                                                                 tenant=tenant,
                                                                 )

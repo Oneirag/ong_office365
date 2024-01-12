@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from abc import abstractmethod
 from ong_office365.msal_token_manager import MsalTokenManager
-from ong_office365 import config, logger
+from ong_office365 import config, logger as log
 from tqdm import tqdm
 
 
@@ -12,9 +14,10 @@ class DownloadProgressBar(tqdm):
                 object.download_media(media, filepath , progress_callback=t.update_to)
     """
 
-    def __init__(self, total: int, incremental: bool = False):
+    def __init__(self, total: int, incremental: bool = False, logger = None):
+        self.logger = logger or log
         if total == 0:
-            logger.warning("Total size should not be zero")
+            self.logger.warning("Total size should not be zero")
         self.incremental = incremental
         super().__init__(total=total, unit="B", unit_scale=True)
 
@@ -79,7 +82,7 @@ class Office365Base:
 
     def __init__(self, client_id: str = None, email: str = None, server: str | None = None,
                  tenant: str = None, init_context: callable = None,
-                 to_token_response: bool = True, timeout: int = None):
+                 to_token_response: bool = True, timeout: int = None, logger=None):
         """
         Initializes sharepoint instance
         :param client_id: List of client ids could be found in
@@ -93,14 +96,16 @@ class Office365Base:
         :param init_context: a function to init context with that accepts a token
         :param to_token_response: True (default) to use acquire_token_response or false to use acquire_token
         :param timeout: time for waiting for user login. Defaults to config(config_key, "timeout")
+        :param logger: an optional logger. Defaults to library default logger
         """
-        self.logger = logger
+        self.logger = logger or log
         client_id = client_id or self.client_id
         email = email or self.email
         tenant = tenant or self.tenant
         server = server or self.server
         self.token_manager = MsalTokenManager(client_id=client_id, email=email, server=server,
-                                              tenant=tenant, scopes=self.scopes, timeout=timeout or self.timeout)
+                                              tenant=tenant, scopes=self.scopes, timeout=timeout or self.timeout,
+                                              logger=self.logger)
         if to_token_response:
             self.ctx = init_context(self.token_manager.acquire_token_response)
         else:

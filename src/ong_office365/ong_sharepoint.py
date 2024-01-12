@@ -37,7 +37,7 @@ class Sharepoint(Office365Base):
         return "sharepoint"
 
     def __init__(self, client_id: str = None, email: str = None, server: str = None, tenant: str = None,
-                 timeout=None):
+                 timeout=None, logger=None):
         """
         Initializes sharepoint instance
         :param client_id: List of client ids could be found in https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade
@@ -45,9 +45,10 @@ class Sharepoint(Office365Base):
         :param server: the server (e.g. for a specific teams), typically is https://{tenant}.sharepoint.com/site/{site}
         :param tenant: tenant name (find it in Ms Entra ID configuration)
         :param timeout: time to wait for user login
+        :param logger: a logger to use instead of default library logger
         """
         super().__init__(client_id, email, server, tenant, ClientContext(server or self.server).with_access_token,
-                         timeout=timeout)
+                         timeout=timeout, logger=logger)
 
     def __get_folder_obj(self, folder_relative_url=None) -> Folder:
         """Gets a folder object according to given relative url. Returns root folder if no url is given"""
