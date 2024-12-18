@@ -15,5 +15,7 @@ ong_utils >= 0.5.5
 ong_utils[jwt]
 ong_utils[selenium] >= 0.5.5
 requests_ntlm       # for auhenticating to a ntlm sharepoint
+blinker==1.7.0      # avoids trouble with selenium-wire
+python-dotenv ~= 1.0.1
 
 

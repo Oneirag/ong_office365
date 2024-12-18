@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime
 import json
 
+from dotenv import dotenv_values
 import pandas as pd
 
 from ong_office365 import logger as log
@@ -54,7 +55,11 @@ class Forms:
                 print(resp.content)
                 raise
         try:
-            return resp.json()
+            retval = resp.json()
+            if not "error" in retval:
+                return retval
+            else:
+                raise ValueError(f"Error in response: {retval}")
         except:
             return {'error': resp.content}
 
@@ -77,13 +82,16 @@ class Forms:
 
         return forms
 
-    def get_forms(self, filter=None) -> list:
+    def get_forms(self, title_filter=None, include_deleted: bool = False) -> list:
         resp = self.__query_entity("forms")
         forms = resp['value']
         retval = []
         for f in forms:
-            if filter and filter not in f['title']:
+            if title_filter and title_filter not in f['title']:
                 continue
+            if not include_deleted:
+                if f['softDeleted'] == 1:
+                    continue
             retval.append(f)
         return retval
 
@@ -112,8 +120,41 @@ class Forms:
             retval.append(answers_dict)
         return retval
 
+    def get_public_questions(self, form_id: str) -> dict:
+        url = f"https://forms.office.com/handlers/ResponsePageStartup.ashx?id={form_id}&origin=lprLink&route=shorturl&mobile=false"
+        url = f"https://forms.office.com/handlers/ResponsePageStartup.ashx?id={form_id}"
+        js = self.__query(url)
+        questions = js['data']['form']['questions']
+        groups = dict()
+        titles = dict()
+        result = dict()
+        for q in questions:
+            group_id = q['groupId']
+            id_ = q['id']
+            title = q['title']
+            title_2 = q['formsProRTQuestionTitle']
+            if title_2 != title:  # title_2 is title 1 in HTML format
+                pass
+                # print("***error")
+            if group_id:
+                if group_id not in groups:
+                    groups[group_id] = list()
+                groups[group_id].append(title)
+            else:
+                titles[id_] = title
+        if groups:
+            for k, v in groups.items():
+                result[titles[k]] = v
+        else:
+            result[None] = list(titles.values())
+        return result
+        pass
+
     def get_form_questions(self, form_id: str):
         resp = self.__query_entity(f"forms('{form_id}')/questions")
+        if "error" in resp:
+            if int(resp['error']['code']) == 707:
+                return self.get_public_questions(form_id=form_id)
         # Removes sections
         questions = remove_sections(resp['value'])
         retval = dict()
@@ -168,7 +209,20 @@ class Forms:
 
 
 if __name__ == '__main__':
+    from pprint import pprint
+    env = dotenv_values("test.env")
+
     forms = Forms()
+    my_forms = forms.get_forms()
+
+    # This is one of my forms
+    form_id = my_forms[0]['id']
+
+    # This is someone else's form
+    for f_id in (form_id, env['form_id']):
+        if f_id:
+            questions = forms.get_public_questions(form_id=f_id)
+            pprint(questions)
     exit(0)
 
     new_form = forms.create_form("Deletable form: " + datetime.datetime.now().isoformat(),
